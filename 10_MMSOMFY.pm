@@ -68,6 +68,44 @@ package MMSOMFY::Mode;
 1;
 ################################################################################
 
+# Enumeration implementation for MMSOMFY::Definition
+package MMSOMFY::Definition;
+
+    use strict;
+    use warnings;
+
+    #enumeration items
+    use constant {
+        'ADDRESS' => 'ADDRESS'.
+        'MODEL' => 'MODEL',
+    };
+
+    # Get string with all items of enumeratione separated by given character
+    # If separation charcter is not set space will be used.
+    sub ToString {
+        my ($sepChar) = @_;
+        $sepChar = " " unless defined $sepChar;
+
+        no strict 'refs';
+        my $pkg = __PACKAGE__;
+        my $stash = $pkg . "::";
+        my @consts;
+
+        for my $name (sort keys %$stash)
+        {
+            ### is it a subentry?
+            my $sub = $pkg->can($name);
+            next unless defined $sub;
+            next unless defined prototype($sub) and not length prototype($sub);
+            push @consts, $name;
+        }
+
+        return join($sepChar, @consts);
+    }
+
+1;
+################################################################################
+
 # Enumeration implementation for MMSOMFY::Movement
 package MMSOMFY::Movement;
 
@@ -287,7 +325,7 @@ package MMSOMFY::Attribute;
                     if ($cmd eq "set")
                     {
                         # ... if model is a shutter, attribute is supported ...
-                        if ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::shutter)
+                        if ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter)
                         {
                             # ... check validity of value to be set ...
                             $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeOpenedToClosed, $main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToClosed}, "smaller");
@@ -296,7 +334,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Attribute::model . " " . MMSOMFY::Model::shutter . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " only.";
                         }
                     }
 
@@ -311,8 +349,8 @@ package MMSOMFY::Attribute;
                         # ... if model is a shutter or awning, attribute is supported ...
                         if
                             (
-                                ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::shutter) ||
-                                ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::awning)
+                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter) ||
+                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning)
                             )
                         {
                             # ... check validity of value to be set ...
@@ -322,7 +360,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Attribute::model . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
                         }
                     }
 
@@ -335,7 +373,7 @@ package MMSOMFY::Attribute;
                     if ($cmd eq "set")
                     {
                         # ... if model is a shutter, attribute is supported ...
-                        if ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::shutter)
+                        if ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter)
                         {
                             # ... check validity of value to be set ...
                             $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeClosedToOpened, $main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToOpened}, "smaller");
@@ -344,7 +382,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Attribute::model . " " . MMSOMFY::Model::shutter . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " only.";
                         }
                     }
 
@@ -359,8 +397,8 @@ package MMSOMFY::Attribute;
                         # ... if model is a shutter or awning, attribute is supported ...
                         if
                             (
-                                ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::shutter) ||
-                                ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::awning)
+                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter) ||
+                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning)
                             )
                         {
                             # ... check validity of value to be set ...
@@ -370,7 +408,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Attribute::model . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
                         }
                     }
 
@@ -385,8 +423,8 @@ package MMSOMFY::Attribute;
                         # ... if model is a shutter or awning, attribute is supported ...
                         if
                             (
-                                ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::shutter) ||
-                                ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::awning)
+                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter) ||
+                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning)
                             )
                         {
                             # ... check if it is within position range ...
@@ -400,7 +438,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Attribute::model . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
                         }
                     }
                 }
@@ -412,8 +450,8 @@ package MMSOMFY::Attribute;
                         # ... if model is a shutter or awning, attribute is supported ...
                         if
                             (
-                                ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::shutter) ||
-                                ($main::attr{$name}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::awning)
+                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter) ||
+                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning)
                             )
                         {
                             # ... if there is already a reading with given name ...
@@ -427,58 +465,8 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Attribute::model . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
                         }
-                    }
-                }
-                case MMSOMFY::Attribute::model
-                {
-                    # ... if attribute shall be set ...
-                    if ($cmd eq "set")
-                    {
-                        # ... set value only if it is different from current value ...
-                        if ($main::attr{$name}{MMSOMFY::Attribute::model} ne $attrValue)
-                        {
-                            # ... and the set model is not shutter ...
-                            if ($attrValue ne MMSOMFY::Model::shutter)
-                            {
-                                # ... remove extended timings ...
-                                delete($main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToDown});
-                                # ... and update Timing Setting.
-                                MMSOMFY::Timing::Update(MMSOMFY::Attribute::driveTimeClosedToDown, undef);
-
-                                # ... remove extended timings ...
-                                delete($main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToDown});
-                                # ... and update Timing Setting.
-                                MMSOMFY::Timing::Update(MMSOMFY::Attribute::driveTimeOpenedToDown, undef);
-
-                                # ... if the set model is also not awning ...
-                                if ($attrValue ne MMSOMFY::Model::awning)
-                                {
-                                    # ... remove basic timings too ...
-                                    delete($main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToOpened});
-                                    # ... and update Timing Setting.
-                                    MMSOMFY::Timing::Update(MMSOMFY::Attribute::driveTimeClosedToOpened, undef);
-
-                                    # ... remove basic timings too ...
-                                    delete($main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToClosed});
-                                    # ... and update Timing Setting.
-                                    MMSOMFY::Timing::Update(MMSOMFY::Attribute::driveTimeOpenedToClosed, undef);                        
-                                }
-                            }
-                        }
-                        # ... otherwise if value is the same ...
-                        else
-                        {
-                            # ... write log entry that setting same value is ignored.
-                            main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Setting model to sdame value ignored.");
-                        }
-                    }
-                    # ... if attribute shall be deleted ...
-                    else
-                    {
-                        # ... error is returned, as this attribute is mandatory.
-                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName cannot be deleted. It is mandatory.";
                     }
                 }
             }
@@ -737,26 +725,21 @@ package MMSOMFY::Timing;
 1;
 ################################################################################
 
-# Enumeration implementation for MMSOMFY::Reading
-package MMSOMFY::Reading;
+# Enumeration implementation for MMSOMFY::Definition
+package MMSOMFY::Definition;
 
     use strict;
     use warnings;
 
     # enumeration items
     use constant {
-        "exact" => "exact",
-        "position" => "position",
-        "state" => "state",
-        "movement" => "movement",
-        "enc_key" => "enc_key",
-        "rolling_code" => "rolling_code",
-        "received" => "received",
-        "parsestate" => "parsestate",
+        "MODEL" => "MODEL",
+        "TIMIMNG" => "TIMIMNG",
+        "STATE" => "STATE",
     };
 
-    # Get string with all items of enumeratione separated by given character.
-    # If separation charcter is not set space will be used.
+    # Get string with all items of enumeration separated by given character.
+    # If separation character is not set, space will be used.
     sub ToString {
         my ($sepChar) = @_;
         $sepChar = " " unless defined $sepChar;
@@ -778,7 +761,52 @@ package MMSOMFY::Reading;
         return join($sepChar, @consts);
     }
 
-    #   Update Readings according given position value and moving.
+1;
+
+################################################################################
+
+# Enumeration implementation for MMSOMFY::Reading
+package MMSOMFY::Reading;
+
+    use strict;
+    use warnings;
+
+    # enumeration items
+    use constant {
+        "exact" => "exact",
+        "position" => "position",
+        "state" => "state",
+        "movement" => "movement",
+        "enc_key" => "enc_key",
+        "rolling_code" => "rolling_code",
+        "received" => "received",
+        "parsestate" => "parsestate",
+    };
+
+    # Get string with all items of enumeration separated by given character.
+    # If separation character is not set, space will be used.
+    sub ToString {
+        my ($sepChar) = @_;
+        $sepChar = " " unless defined $sepChar;
+
+        no strict 'refs';
+        my $pkg = __PACKAGE__;
+        my $stash = $pkg . "::";
+        my @consts;
+
+        for my $name (sort keys %$stash)
+        {
+            ### is it a subentry?
+            my $sub = $pkg->can($name);
+            next unless defined $sub;
+            next unless defined prototype($sub) and not length prototype($sub);
+            push @consts, $name;
+        }
+
+        return join($sepChar, @consts);
+    }
+
+    # Update Readings according given position value and moving.
     sub Update($$) {
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Reading ($main::FHEM_Hash->{NAME}): Enter 'Update'");
 
@@ -1213,16 +1241,13 @@ package MMSOMFY::Command;
                 (
                     # Commmand list depends on model
                     (
-                        # if model is not defined no commands are available ...
-                        (exists($main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::model})) &&
-
                         # ... for remotes there are also no commands ...
-                        ($main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::model} ne MMSOMFY::Model::remote) &&
+                        ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} ne MMSOMFY::Model::remote) &&
 
                         (
                             (
                                 # ... for switches following commands are available ...
-                                ($main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::switch) &&
+                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::switch) &&
                                 (
                                     ($name eq MMSOMFY::Command::on) ||
                                     ($name eq MMSOMFY::Command::off) ||
@@ -1234,8 +1259,8 @@ package MMSOMFY::Command;
                             ) || (
                                 # ... for awning and shutter following commands are available ...
                                 (
-                                    ($main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::awning) ||
-                                    ($main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::model} eq MMSOMFY::Model::shutter)
+                                    ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning) ||
+                                    ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter)
                                 ) && (
                                     ($name eq MMSOMFY::Command::open) ||
                                     ($name eq MMSOMFY::Command::close) ||
@@ -1557,7 +1582,7 @@ package MMSOMFY::Command;
                     # ... enckey is not fixed ...
                     (!main::AttrVal($name, MMSOMFY::Attribute::fixedEnckey, 0)) &&
                     #... and model is not switch ...
-                    (main::AttrVal($name, MMSOMFY::Attribute::model, '') ne MMSOMFY::Model::switch)
+                    ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} ne MMSOMFY::Model::switch)
                 )
             { 
                 # ... convert enckey from string to hex ..
@@ -1808,17 +1833,29 @@ sub MMSOMFY_Define($$) {
     Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Define ($FHEM_Hash->{NAME}): Enter");
 
     my @a = split("[ \t][ \t]*", $def);
+    my $errormessage;
+    $errormessage .= "Command: define $def\n\n";
+    $errormessage .= "Syntax: define <name> MMSOMFY <address> <model> [<encryption-key>] [<rolling-code>]\n\n";
 
     # fail early and display syntax help
     if (int(@a) < 4)
     {
-        return "Wrong syntax: define <name> MMSOMFY address model [encryption-key] [rolling-code]";
+        $errormessage .= "Error: Wrong syntax.";
+        return $errormessage;
     }
 
     # check address format (6 hex digits)
     if (( $a[2] !~ m/^[a-fA-F0-9]{6}$/i))
     {
-        return "Define $a[0]: Wrong address format: specify a 6 digit hex value "
+        $errormessage .= "Error: Wrong format of <address> '$a[2]': specify a 6 digit hex value.";
+        return $errormessage;
+    }
+
+    # check model to be valid
+    unless (MMSOMFY::Model->can($a[3]))
+    {
+        $errormessage .= "Error: Unknown <model> '$a[3]': use one of " . MMSOMFY::Model::ToString(", ") . ".";
+        return $errormessage;
     }
 
     # group devices by their address
@@ -1826,40 +1863,37 @@ sub MMSOMFY_Define($$) {
     my $address = $a[2];
     my $model = $a[3];
 
-    unless (MMSOMFY::Model->can($model))
-    {
-        return "Define $a[3]: Unknown model: use one of " . MMSOMFY::Model::ToString(",");
-    }
-
     # reset reading time on def to 0 seconds (1970)
     my $tzero = FmtDateTime(0);
 
-    $FHEM_Hash->{ADDRESS} = uc($address);
-    $FHEM_Hash->{MODEL} = lc($model);
+    $FHEM_Hash->{MMSOMFY::Definition::ADDRESS} = uc($address);
+    $FHEM_Hash->{MMSOMFY::Definition::MODEL} = lc($model);
 
     # check optional arguments for device definition
     if (int(@a) > 4)
     {
         # check encryption key (2 hex digits)
-        if (($a[3] !~ m/^[a-fA-F0-9]{2}$/i))
+        if (($a[4] !~ m/^[a-fA-F0-9]{2}$/i))
         {
-            return "Define $a[0]: wrong encryption key format: specify a 2 digits hex value."
+            $errormessage .= "Error: Wrong format of <encryption-key> '$a[4]': specify a 2 digit hex value.";
+            return $errormessage;
         }
 
         # store it as reading, so it is saved in the statefile
-        setReadingsVal($FHEM_Hash, MMSOMFY::Reading::enc_key, uc($a[3]), $tzero);
+        setReadingsVal($FHEM_Hash, MMSOMFY::Reading::enc_key, uc($a[4]), $tzero);
+    }
 
-        if (int(@a) > 4)
+    if (int(@a) > 5)
+    {
+        # check rolling code (4 hex digits)
+        if (($a[5] !~ m/^[a-fA-F0-9]{4}$/i))
         {
-            # check rolling code (4 hex digits)
-            if (($a[4] !~ m/^[a-fA-F0-9]{4}$/i))
-            {
-                return "Define $a[0]: wrong rolling code format: specify a 4 digits hex value."
-            }
-
-            # store it
-            setReadingsVal($FHEM_Hash,  MMSOMFY::Reading::rolling_code, uc($a[4]), $tzero);
+            $errormessage .= "Error: Wrong format of <rolling-code> '$a[5]': specify a 4 digit hex value.";
+            return $errormessage;
         }
+
+        # store it
+        setReadingsVal($FHEM_Hash,  MMSOMFY::Reading::rolling_code, uc($a[5]), $tzero);
     }
 
     my $code  = uc($address);
