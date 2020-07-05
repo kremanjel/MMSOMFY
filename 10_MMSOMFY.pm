@@ -1276,30 +1276,26 @@ package MMSOMFY::Command;
                                     ($name eq MMSOMFY::Command::close) ||
                                     ($name eq MMSOMFY::Command::stop) ||
                                     ($name eq MMSOMFY::Command::prog) ||
-                                    ($name eq MMSOMFY::Command::close_for_timer) ||
-                                    ($name eq MMSOMFY::Command::open_for_timer) ||
                                     ($name eq MMSOMFY::Command::z_custom) ||
-                                    ($name eq MMSOMFY::Command::go_my) ||
-                                    ($name eq MMSOMFY::Command::position) ||
                                     ($name eq MMSOMFY::Command::manual) ||
                                     ($name eq MMSOMFY::Command::wind_sun_9) ||
-                                    ($name eq MMSOMFY::Command::wind_only_a)
+                                    ($name eq MMSOMFY::Command::wind_only_a) ||
+                                    (
+                                        (
+                                            ($name eq MMSOMFY::Command::position) ||
+                                            ($name eq MMSOMFY::Command::close_for_timer) ||
+                                            ($name eq MMSOMFY::Command::open_for_timer)
+                                        ) && (
+                                            exists($main::FHEM_Hash->{TIMING}) &&
+                                            ($main::FHEM_Hash->{TIMING} ne MMSOMFY::Timing::off)
+                                        )
+                                    ) || (
+                                        ($name eq MMSOMFY::Command::go_my) &&
+                                        exists($main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::myPosition})
+                                    )
                                 )
                             )
                         )
-                    ) && (
-                        # Command position, open_for_timer and close_for_timer are only available if TIMING is set.
-                        (
-                            ($name ne MMSOMFY::Command::position) &&
-                            ($name ne MMSOMFY::Command::close_for_timer) &&
-                            ($name ne MMSOMFY::Command::open_for_timer)
-                        ) || (
-                            $main::FHEM_Hash->{TIMING} ne MMSOMFY::Timing::off
-                        )
-                    ) && (
-                        # Command go_my is only available if myPosition is set.
-                        ($name ne MMSOMFY::Command::go_my) ||
-                        (exists($main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::myPosition}))
                     )
                 )
             {
