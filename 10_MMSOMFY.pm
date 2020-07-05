@@ -30,20 +30,22 @@
 #
 ################################################################################
 
-# Enumeration implementation for MMSOMFY::Mode
-package MMSOMFY::Mode;
+# Enumeration implementation for MMSOMFY::Definition
+package MMSOMFY::Definition;
 
     use strict;
     use warnings;
 
-    #enumeration items
+    # enumeration items
     use constant {
-        'virtual' => 'virtual',
-        'send' => 'send',
+        ADDRESS => "ADDRESS",
+        MODEL => "MODEL",
+        TIMIMNG => "TIMIMNG",
+        STATE => "STATE",
     };
 
-    # Get string with all items of enumeratione separated by given character
-    # If separation charcter is not set space will be used.
+    # Get string with all items of enumeration separated by given character.
+    # If separation character is not set, space will be used.
     sub ToString {
         my ($sepChar) = @_;
         $sepChar = " " unless defined $sepChar;
@@ -66,18 +68,19 @@ package MMSOMFY::Mode;
     }
 
 1;
+
 ################################################################################
 
-# Enumeration implementation for MMSOMFY::Definition
-package MMSOMFY::Definition;
+# Enumeration implementation for MMSOMFY::Mode
+package MMSOMFY::Mode;
 
     use strict;
     use warnings;
 
     #enumeration items
     use constant {
-        'ADDRESS' => 'ADDRESS'.
-        'MODEL' => 'MODEL',
+        virtual => "virtual",
+        send => "send",
     };
 
     # Get string with all items of enumeratione separated by given character
@@ -114,10 +117,10 @@ package MMSOMFY::Movement;
 
     # enumeration items
     use constant {
-        "none" => "none",
-        "go_my" => "go_my",
-        "up" => "up",
-        "down" => "down",
+        none => "none",
+        go_my => "go_my",
+        up => "up",
+        down => "down",
     };
 
     # Get string with all items and values of enumeratione separated by given character.
@@ -194,16 +197,17 @@ package MMSOMFY::State;
 
     # enumeration items
     use constant {
-        "moving" => "moving",
-        "mypos" => "mypos",
-        "opened" => "opened",
-        "off" => "off",
-        "down" => "down",
-        "closed" => "closed",
-        "on" => "on",
-        "position" => "position",
-        "inactive" => "inactive",
-        "ignored" => "ignored",
+        moving => "moving",
+        mypos => "mypos",
+        opened => "opened",
+        off => "off",
+        down => "down",
+        closed => "closed",
+        on => "on",
+        position => "position",
+        receiving => "receiving",
+        inactive => "inactive",
+        ignored => "ignored",
     };
 
     # Get string with all items of enumeratione separated by given character.
@@ -254,15 +258,15 @@ package MMSOMFY::Attribute;
         symbolLength => 'symbolLength',
         repetition => 'repetition',
         fixedEnckey => 'fixedEnckey',
-        do_not_notify => 'do_not_notify',
         ignore => 'ignore',
         rawDevice => 'rawDevice',
+        userattr => 'userattr',
     };
 
     # Get string with all items and values of enumeratione separated by given character.
     # If separation charcter is not set space will be used.
     # item and value are separated by ":"
-    sub ToString {
+    sub AddSpecificAttributes {
 
         # values for enumeration items.
         # if set they must be separated by colon from the itemname.
@@ -279,9 +283,9 @@ package MMSOMFY::Attribute;
             symbolLength => "",
             repetition => "",
             fixedEnckey => ":1,0",
-            do_not_notify => ":1,0",
             ignore => ":0,1",
             rawDevice => "",
+            userattr => "",
         );
 
         my ($sepChar) = @_;
@@ -299,17 +303,57 @@ package MMSOMFY::Attribute;
             next unless defined $sub;
             next unless defined prototype($sub) and not length prototype($sub);
 
-            push @consts, $name;
-        }
+            if
+                (
+                    # ... attribute is for all models ...
+                    ($name eq MMSOMFY::Attribute::IODev) ||
+                    ($name eq MMSOMFY::Attribute::ignore) ||
 
-        return join($sepChar, map {$_ . $values{$_}} @consts);
+                    # ... or attribute belongs to set model ...
+                    (
+                        # ... remotes ...
+                        ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::remote) &&
+                        (
+                            ($name eq MMSOMFY::Attribute::rawDevice)
+                        )
+                    ) || (
+                        # ... switches ...
+                        ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::switch) &&
+                        (
+                            ($name eq MMSOMFY::Attribute::symbolLength) ||
+                            ($name eq MMSOMFY::Attribute::repetition) ||
+                            ($name eq MMSOMFY::Attribute::fixedEnckey)
+                        )
+                    ) || (
+                        # ... awnings and shutters ...
+                        (
+                            ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning) ||
+                            ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter)
+                        ) && (
+                            ($name eq MMSOMFY::Attribute::symbolLength) ||
+                            ($name eq MMSOMFY::Attribute::repetition) ||
+                            ($name eq MMSOMFY::Attribute::fixedEnckey) ||
+                            ($name eq MMSOMFY::Attribute::driveTimeOpenedToDown) ||
+                            ($name eq MMSOMFY::Attribute::driveTimeOpenedToClosed) ||
+                            ($name eq MMSOMFY::Attribute::driveTimeClosedToDown) ||
+                            ($name eq MMSOMFY::Attribute::driveTimeClosedToOpened) ||
+                            ($name eq MMSOMFY::Attribute::myPosition) ||
+                            ($name eq MMSOMFY::Attribute::additionalPosReading) ||
+                            ($name eq MMSOMFY::Attribute::positionInverse)
+                        )
+                    )
+                )
+            {
+                main::addToDevAttrList($main::FHEM_Hash->{NAME}, $name . $values{$name});
+            }
+        }
     }
 
     # Checks that changing attribute values results in valid states.
-    sub CheckAttribute($$$) {
+    sub CheckAttribute($$$$) {
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Enter 'CheckAttribute'");
         
-        my ($cmd, $attrName, $attrValue) = @_;
+        my ($cmd, $attrName, $attrValue, $init_done) = @_;
         my $name = $main::FHEM_Hash->{NAME};
         my $retval = undef;
 
@@ -319,6 +363,14 @@ package MMSOMFY::Attribute;
             # ... then continue depending on attribute name ...
             switch ($attrName)
             {
+                case MMSOMFY::Attribute::userattr
+                {
+                    if ($init_done)
+                    {
+                        # ... user attributes shall not be modified by user therefore error is returned.
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName cannot be modfied.";
+                    }
+                }
                 case MMSOMFY::Attribute::driveTimeOpenedToDown
                 {
                     # ... if attribute shall be set ...
@@ -502,9 +554,9 @@ package MMSOMFY::Timing;
 
     # enumeration items
     use constant {
-        "off" => "off",
-        "basic" => "basic",
-        "extended" => "extended",
+        off => "off",
+        basic => "basic",
+        extended => "extended",
     };
 
     # Check given timing attribute against a reference attribute with operator.
@@ -725,46 +777,6 @@ package MMSOMFY::Timing;
 1;
 ################################################################################
 
-# Enumeration implementation for MMSOMFY::Definition
-package MMSOMFY::Definition;
-
-    use strict;
-    use warnings;
-
-    # enumeration items
-    use constant {
-        "MODEL" => "MODEL",
-        "TIMIMNG" => "TIMIMNG",
-        "STATE" => "STATE",
-    };
-
-    # Get string with all items of enumeration separated by given character.
-    # If separation character is not set, space will be used.
-    sub ToString {
-        my ($sepChar) = @_;
-        $sepChar = " " unless defined $sepChar;
-
-        no strict 'refs';
-        my $pkg = __PACKAGE__;
-        my $stash = $pkg . "::";
-        my @consts;
-
-        for my $name (sort keys %$stash)
-        {
-            ### is it a subentry?
-            my $sub = $pkg->can($name);
-            next unless defined $sub;
-            next unless defined prototype($sub) and not length prototype($sub);
-            push @consts, $name;
-        }
-
-        return join($sepChar, @consts);
-    }
-
-1;
-
-################################################################################
-
 # Enumeration implementation for MMSOMFY::Reading
 package MMSOMFY::Reading;
 
@@ -773,14 +785,14 @@ package MMSOMFY::Reading;
 
     # enumeration items
     use constant {
-        "exact" => "exact",
-        "position" => "position",
-        "state" => "state",
-        "movement" => "movement",
-        "enc_key" => "enc_key",
-        "rolling_code" => "rolling_code",
-        "received" => "received",
-        "parsestate" => "parsestate",
+        exact => "exact",
+        position => "position",
+        state => "state",
+        movement => "movement",
+        enc_key => "enc_key",
+        rolling_code => "rolling_code",
+        received => "received",
+        parsestate => "parsestate",
     };
 
     # Get string with all items of enumeration separated by given character.
@@ -1145,22 +1157,22 @@ package MMSOMFY::Command;
 
     # enumeration items
     use constant {
-        "open" => "open",
-        "off" => "off",
-        "close" => "close",
-        "on" => "on",
-        "stop" => "stop",
-        "prog" => "prog",
-        "close_for_timer" => "close_for_timer",
-        "open_for_timer" => "open_for_timer",
-        "on_for_timer" => "on_for_timer",
-        "off_for_timer" => "off_for_timer",
-        "z_custom" => "z_custom",
-        "go_my" => "go_my",
-        "position" => "position",
-        "manual" => "manual",
-        "wind_sun_9" => "wind_sun_9",
-        "wind_only_a" => "wind_only_a",
+        open => "open",
+        off => "off",
+        close => "close",
+        on => "on",
+        stop => "stop",
+        prog => "prog",
+        close_for_timer => "close_for_timer",
+        open_for_timer => "open_for_timer",
+        on_for_timer => "on_for_timer",
+        off_for_timer => "off_for_timer",
+        z_custom => "z_custom",
+        go_my => "go_my",
+        position => "position",
+        manual => "manual",
+        wind_sun_9 => "wind_sun_9",
+        wind_only_a => "wind_only_a",
     };
 
     my %code2command = (
@@ -1203,23 +1215,22 @@ package MMSOMFY::Command;
         # if set they must be separated by colon from the item name.
         # Separator is part of value for convenience
         my %values = (
-            "open" => ":noArg",
-            "close" => ":noArg",
-            "on" => ":noArg",
-            "off" => ":noArg",
-            "stop" => ":noArg",
-            "prog" => ":noArg",
-            "close_for_timer" => ":textField",
-            "open_for_timer" => ":textField",
-            "on_for_timer" => ":textField",
-            "off_for_timer" => ":textField",
-            "z_custom" => ":textField",
-            "go_my" => ":noArg",
-            "position" => ":" . MMSOMFY::Position::ToString(','),
-            # Positions for manual are only available if timings are set.
-            "manual" => ":" . ($main::FHEM_Hash->{TIMING} ne MMSOMFY::Timing::off ? MMSOMFY::Position::ToString(',') ."," : "") . "open,close",
-            "wind_sun_9" => ":noArg",
-            "wind_only_a" => ":noArg",
+            open => ":noArg",
+            close => ":noArg",
+            on => ":noArg",
+            off => ":noArg",
+            stop => ":noArg",
+            prog => ":noArg",
+            close_for_timer => ":textField",
+            open_for_timer => ":textField",
+            on_for_timer => ":textField",
+            off_for_timer => ":textField",
+            z_custom => ":textField",
+            go_my => ":noArg",
+            position => ":" . MMSOMFY::Position::ToString(','),
+            manual => ":" . ((defined($main::FHEM_Hash->{TIMING}) and $main::FHEM_Hash->{TIMING} ne MMSOMFY::Timing::off) ? MMSOMFY::Position::ToString(',') ."," : "") . "open,close",
+            wind_sun_9 => ":noArg",
+            wind_only_a => ":noArg",
         );
 
         my ($sepChar, $skipArguments) = @_;
@@ -1243,7 +1254,6 @@ package MMSOMFY::Command;
                     (
                         # ... for remotes there are also no commands ...
                         ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} ne MMSOMFY::Model::remote) &&
-
                         (
                             (
                                 # ... for switches following commands are available ...
@@ -1321,14 +1331,17 @@ package MMSOMFY::Command;
         my $name = $main::FHEM_Hash->{NAME};
 
         # ... create command list without arguments ...
-        my $cmdListwoArg = ToString("|", 1);
+        my $cmdListwoArg = MMSOMFY::Command::ToString("|", 1);
 
         # ... and command list with arguments ...
-        my $cmdListwithArg = ToString("|", 0);
+        my $cmdListwithArg = MMSOMFY::Command::ToString("|", 0);
 
         if
             (
                 (
+                    # ... commandlist is empty ...
+                    $cmdListwoArg eq ""
+                ) || (
                     # ... command is not in list of available commands without arguments
                     $cmd !~ qr/$cmdListwoArg/
                 ) || (
@@ -1348,7 +1361,7 @@ package MMSOMFY::Command;
         {
             my $errormessage = "MMSOMFY::Command::Check ($name): Invalid command: $cmd ";
             $errormessage = $errormessage +  $cmdarg if defined($cmdarg);
-            main::Log3($name, 4, $errormessage);
+            main::Log3($name, 1, $errormessage);
 
             # ... cmd is cleared because it is invalid ...
             $_[1] = undef;
@@ -1691,7 +1704,7 @@ package MMSOMFY::Command;
 
 ################################################################################
 
-# Enumeration implementation for MMSOMFY::Simulation
+# Enumeration implementation for MMSOMFY::Profile
 package MMSOMFY::Profile;
 
 use strict;
@@ -1813,7 +1826,7 @@ sub MMSOMFY_Initialize($) {
     #####################################################
     # Publish attributes supported by the module to fhem
     #####################################################
-    $FHEM_Hash->{AttrList} = $readingFnAttributes . " " . MMSOMFY::Attribute::ToString;
+    $FHEM_Hash->{AttrList} = $readingFnAttributes; # . " " . MMSOMFY::Attribute::ToString;
 
     ######################################################
     # Map functions for logical module in two-stage model
@@ -1868,9 +1881,10 @@ sub MMSOMFY_Define($$) {
 
     $FHEM_Hash->{MMSOMFY::Definition::ADDRESS} = uc($address);
     $FHEM_Hash->{MMSOMFY::Definition::MODEL} = lc($model);
+    $FHEM_Hash->{MMSOMFY::Definition::STATE} = MMSOMFY::State::inactive;
 
     # check optional arguments for device definition
-    if (int(@a) > 4)
+    if (int(@a) > 4) 
     {
         # check encryption key (2 hex digits)
         if (($a[4] !~ m/^[a-fA-F0-9]{2}$/i))
@@ -1900,6 +1914,17 @@ sub MMSOMFY_Define($$) {
     my $ncode = 1;
     $FHEM_Hash->{CODE}{$ncode++} = $code;
     $modules{MMSOMFY}{defptr}{$code}{$name} = $FHEM_Hash;
+
+    # Clear existing attributes in case of modify def, so we start without attributes.
+    %{$attr{$name}} = ();
+
+    # Set verbose to 5 for debugging. Todo Remove
+    $attr{$name}{"verbose"} = 5;
+
+    # Add the device specific attributes to the instance depending on model.
+    MMSOMFY::Attribute::AddSpecificAttributes;
+
+#    ! Set default attributes !
 #    setReadingsVal($FHEM_Hash, MMSOMFY::Reading::position, MMSOMFY::Position::Current, $tzero);
 #    setReadingsVal($FHEM_Hash, MMSOMFY::Reading::exact, MMSOMFY::Position::Current, $tzero);
 #    setReadingsVal($FHEM_Hash, MMSOMFY::Reading::movement, MMSOMFY::Movement::none, $tzero);
@@ -2021,7 +2046,7 @@ sub MMSOMFY_Attr(@) {
 
     # ... check if attribute is a valid timing setting ...
     # Third argument is attribute value as a reference, as it will be modified inside method.
-    $retval = MMSOMFY::Attribute::CheckAttribute($cmd, $aName, $_[3]);
+    $retval = MMSOMFY::Attribute::CheckAttribute($cmd, $aName, $_[3], $init_done);
 
     Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Attr ($FHEM_Hash->{NAME} / $aName): Exit");
     return $retval;
@@ -2092,29 +2117,27 @@ sub MMSOMFY_Parse($$) {
     ($FHEM_Hash, my $msg) = @_;
     my $name = $FHEM_Hash->{NAME};
 
-  my $ret;
-
-  my $ioType = $FHEM_Hash->{TYPE};
-#   return "IODev unsupported" if ((my $ioType = $FHEM_Hash->{TYPE}) !~ m/^(CUL|SIGNALduino)$/);
+    my $ret;
+    my $ioType = $FHEM_Hash->{TYPE};
 
     # preprocessing if IODev is SIGNALduino
     if ($ioType eq "SIGNALduino") {
         my $encData = substr($msg, 2);
-    $ret = "Somfy RTS message format error (length)! :".$encData.":" if (length($encData) < 14);
-    $ret = "Somfy RTS message format error! :".$encData.":" if ( ( ! $ret ) && ($encData !~ m/[0-9A-F]{14}/) );
+        $ret = "Somfy RTS message format error (length)! :".$encData.":" if (length($encData) < 14);
+        $ret = "Somfy RTS message format error! :".$encData.":" if ( ( ! $ret ) && ($encData !~ m/[0-9A-F]{14}/) );
 
-    my ( $decData, $check );
-    if ( ! $ret ) {
-      $decData = MMSOMFY::Command::RTS_Crypt("d", $name, $encData);
-      $check = MMSOMFY::Command::RTS_Check($name, $decData);
-    }
+        my ( $decData, $check );
+        if ( ! $ret ) {
+            $decData = MMSOMFY::Command::RTS_Crypt("d", $name, $encData);
+            $check = MMSOMFY::Command::RTS_Check($name, $decData);
+        }
 
         $ret = "Somfy RTS checksum error! :".$encData.":" if ( ( ! $ret ) && ($check ne substr($decData, 3, 1)) );
 
-    if ( $ret ) {
-      Log3 $name, 1, "$name: MMSOMFY_Parse : ".$ret;
-      return undef;
-    }
+        if ( $ret ) {
+            Log3 $name, 1, "$name: MMSOMFY_Parse : ".$ret;
+            return undef;
+        }
 
         Log3 $name, 4, "$name: Somfy RTS preprocessing check: $check enc: $encData dec: $decData";
         $msg = substr($msg, 0, 2) . $decData;
@@ -2129,46 +2152,47 @@ sub MMSOMFY_Parse($$) {
         return "";
     }
 
-  # Check for correct length
-  if ( length($msg) != 16 ) {
-    Log3 $name, 1, "$name: MMSOMFY_Parse : SOMFY incorrect length for command (".$msg.") / length should be 16";
-    return undef;
-  }
+    # Check for correct length
+    if ( length($msg) != 16 ) {
+        Log3 $name, 1, "$name: MMSOMFY_Parse : SOMFY incorrect length for command (".$msg.") / length should be 16";
+        return undef;
+    }
 
-  # get address
-  my $address = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
+    # get address
+    my $address = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
+    Log3 $name, 1, "$name: MMSOMFY_Parse : Address (".$address.")";
 
     # get command and set new state
     my $cmd = sprintf("%X", hex(substr($msg, 4, 2)) & 0xF0);
     if ($cmd eq "10") {
         $cmd = "11"; # use "stop" instead of "go-my"
-  }
+    }
 
     my $newstate = $somfy_codes2cmd{ $cmd };
-
     my $def = $modules{MMSOMFY}{defptr}{$address};
+    Log3 $name, 1, "$name: MMSOMFY_Parse : Definition Name (".$def->{NAME}.")" if defined($def);
 
     if ( ($def) && (keys %{ $def }) ) {   # Check also for empty hash --> issue #5
         my @list;
         foreach my $name (keys %{ $def }) {
-      my $lh = $def->{$name};
-      $name = $lh->{NAME};        # It may be renamed
+            my $lh = $def->{$name};
+            $name = $lh->{NAME};        # It may be renamed
 
-      return "" if(IsIgnored($name));
+            return "" if(IsIgnored($name));
 
-      # update the state and log it
-      # Debug "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
+            # update the state and log it
+            # Debug "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
             Log3 $name, 4, "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate   --> io is $ioType";
-      readingsSingleUpdate($lh, "received", $cmd, 1);
-      readingsSingleUpdate($lh, "parsestate", $newstate, 1);
+            readingsSingleUpdate($lh, "received", $cmd, 1);
+            readingsSingleUpdate($lh, "parsestate", $newstate, 1);
 
-      _MMSOMFY_DispatchRemoteCmd($lh, $cmd ) if ( _MMSOMFY_isRemote( $lh ) );
+            _MMSOMFY_DispatchRemoteCmd($lh, $cmd ) if ( $lh->{MODEL} eq MMSOMFY::Model::remote );
 
             push(@list, $name);
         }
         # return list of affected devices
     
-    Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Parse ($FHEM_Hash->{NAME}): Exit");
+        Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Parse ($FHEM_Hash->{NAME}): Exit");
         return @list;
 
     } else {
@@ -2177,7 +2201,7 @@ sub MMSOMFY_Parse($$) {
         my $encKey = substr($msg, 2, 2);
 
         Log3 $FHEM_Hash, 1, "MMSOMFY Unknown device $address ($encKey $rolling), please define it";
-    Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Parse ($FHEM_Hash->{NAME}): Exit");
+        Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Parse ($FHEM_Hash->{NAME}): Exit");
         return "UNDEFINED MMSOMFY_$address MMSOMFY $address $encKey $rolling";
     }
 }
@@ -2310,7 +2334,7 @@ sub MMSOMFY_Set($@) {
         }
         Log3($name, 3, $logmessage);
 
-        my $model = AttrVal($name, "model", undef);
+        my $model = $FHEM_Hash->{MMSOMFY::Definition::MODEL};
         if ($model eq MMSOMFY::Model::switch)
         {
             Log3($name, 3, "Handle Switch.");
@@ -2870,8 +2894,6 @@ sub _MMSOMFY_TimedUpdate($) {
         set store open
         </code></ul>
         </li><br>
-
-    <li><a href="#do_not_notify">do_not_notify</a></li><br>
 
     <li><a href="#loglevel">loglevel</a></li><br>
 
