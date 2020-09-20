@@ -1176,12 +1176,27 @@ package MMSOMFY::Command;
     };
 
     my %code2command = (
-        "10" => "go_my",       # stop or go my
-        "20" => "up",          # go up
-        "40" => "down",        # go down
-        "80" => "prog",        # pairing or unpairing
-        "90" => "wind_sun_9",  # wind and sun (sun + flag)
-        "A0" => "wind_only_a", # wind only (flag)
+        MMSOMFY::Model::awning => {
+            "10" => "go_my",       # stop or go my
+            "20" => "open",        # go up
+            "40" => "close",       # go down
+            "80" => "prog",        # pairing or unpairing
+            "90" => "wind_sun_9",  # wind and sun (sun + flag)
+            "A0" => "wind_only_a", # wind only (flag)
+        },
+        MMSOMFY::Model::shutter => {
+            "10" => "go_my",       # stop or go my
+            "20" => "open",        # go up
+            "40" => "close",       # go down
+            "80" => "prog",        # pairing or unpairing
+            "90" => "wind_sun_9",  # wind and sun (sun + flag)
+            "A0" => "wind_only_a", # wind only (flag)
+        },
+        MMSOMFY::Model::switch => {
+            "20" => "on",          # go up
+            "40" => "off",         # go down
+            "80" => "prog",        # pairing or unpairing
+        },
     );
 
     my %command2code =  (
@@ -1493,10 +1508,67 @@ package MMSOMFY::Command;
         return $retval;
     }
 
-    sub RTS_Crypt($$$) {
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($main::FHEM_Hash->{NAME}): Enter 'RTS_Crypt'");
+    sub DispatchRemote($$) {
+        (my $Remote_FHEM_Hash, my $code) = @_;
+        main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($Remote_FHEM_Hash->{NAME}): Enter 'DispatchRemote'");
 
+        my $rawdAttr = $main::attr{$Remote_FHEM_Hash->{NAME}}{MMSOMFY::Attribute::rawDevice} if (exists($main::attr{$Remote_FHEM_Hash->{NAME}}{MMSOMFY::Attribute::rawDevice}));
+
+        # check if rdev is defined and exists
+        if (defined($rawdAttr))
+        {
+            main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCammand ($Remote_FHEM_Hash->{NAME}): rawDevice is '$rawdAttr'");
+            
+            # normalize address in rawdev
+            $rawdAttr = uc($rawdAttr);
+            my @rawdevs = split(/\s+/, $rawdAttr);
+
+            foreach my $rawdev (@rawdevs)
+            {
+                my $slist =  $main::modules{MMSOMFY}{defptr}{$rawdev};
+
+                if (defined($slist))
+                {
+                    foreach my $n (keys %{$slist})
+                    {
+                        my $rawhash = $main::modules{MMSOMFY}{defptr}{$rawdev}{$n};
+                        main::Log3($Remote_FHEM_Hash, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Found remote MMSOMFY device '$rawhash->{NAME}'");
+
+                        my $rawModel = $rawhash->{MODEL};
+                        my $cmd = $code2command{$rawModel}{$code};
+
+                        if ($cmd)
+                        {
+                            main::Log3($Remote_FHEM_Hash, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Send command '$cmd'.");
+                            # add virtual as modifier to set command and directly call send
+                            my $ret = main::MMSOMFY_Set($rawhash, $rawhash->{NAME}, MMSOMFY::Mode::virtual, $cmd );
+                            if ($ret)
+                            {
+                                main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): '$rawhash->{NAME}' returned '$ret' for command '$cmd'.");
+                            }
+                            else
+                            {
+                                main::Log3($Remote_FHEM_Hash, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): command '$cmd' succeeded for '$rawhash->{NAME}'.");
+                            }
+                        }
+                        else
+                        {
+                            main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Command '$cmd' is not valid for remote device '$rawhash->{NAME}'");
+                        }
+                    }
+                } else {
+                    main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): rawDevice '$rawdev' not found.");
+                }
+            }
+        } else {
+            main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): No rawDevice defined in '$Remote_FHEM_Hash->{NAME}'");
+        }
+        main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($Remote_FHEM_Hash->{NAME}): Exit 'DispatchRemoteCommand'");
+    }
+
+    sub RTS_Crypt($$$) {
         my ($operation, $name, $data) = @_;
+        main::Log3($name, 4, "MMSOMFY::Command ($name): Enter 'RTS_Crypt'");
 
         my $res = substr($data, 0, 2);
         my $ref = ($operation eq "e" ? \$res : \$data);
@@ -1510,14 +1582,13 @@ package MMSOMFY::Command;
             $res .= sprintf("%02X", $val);
         }
 
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($main::FHEM_Hash->{NAME}): Exit 'RTS_Crypt'");
+        main::Log3($name, 4, "MMSOMFY::Command ($name): Exit 'RTS_Crypt'");
         return $res;
     }
 
     sub RTS_Check($$) {
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($main::FHEM_Hash->{NAME}): Enter 'RTS_Check'");
-
         my ($name, $data) = @_;
+        main::Log3($name, 4, "MMSOMFY::Command ($name): Enter 'RTS_Check'");
 
         my $checkSum = 0;
         for (my $idx=0; $idx < 7; $idx++)
@@ -1529,7 +1600,7 @@ package MMSOMFY::Command;
 
         $checkSum &= hex("0x0F");
 
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($main::FHEM_Hash->{NAME}): Exit 'RTS_Check'");
+        main::Log3($name, 4, "MMSOMFY::Command ($name): Exit 'RTS_Check'");
         return sprintf("%X", $checkSum);
     }
 
@@ -2055,66 +2126,14 @@ sub MMSOMFY_Attr(@) {
 ##
 ##############################################################################
 ##############################################################################
-
-
-
-#############################
-sub _MMSOMFY_DispatchRemoteCmd($$) {
-    Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_DispatchRemoteCmd ($FHEM_Hash->{NAME}): Enter");
-
-    ($FHEM_Hash, my $cmd) = @_;
-    my $name = $FHEM_Hash->{NAME};
-
-    if ($cmd eq "10") {
-        $cmd = "11"; # use "stop" instead of "go-my"
-    }
-
-    my $txtcmd = $somfy_codes2cmd{ $cmd };
-    return if ( ! $txtcmd );
-
-    my $rawdAttr = AttrVal($name,'rawDevice',undef);
-
-    # check if rdev is defined and exists
-  if( defined($rawdAttr) ) {
-        # normalize address in rawdev
-        $rawdAttr = uc( $rawdAttr );
-
-    my @rawdevs = split( /\s+/, $rawdAttr );
-
-    foreach my $rawdev ( @rawdevs ) {
-
-      my $slist =  $modules{MMSOMFY}{defptr}{$rawdev};
-      if ( defined($slist)) {
-        foreach my $n ( keys %{ $slist } ) {
-
-          my $rawhash = $modules{MMSOMFY}{defptr}{$rawdev}{$n};
-
-          Log3 $FHEM_Hash, 4, "_MMSOMFY_DispatchRemoteCmd " .  $name . " found dispatch MMSOMFY device " . $rawhash->{NAME} . " sent command :$txtcmd:";
-
-          # add virtual as modifier to set command and directly call send
-          my $ret = MMSOMFY_Set( $rawhash, $rawhash->{NAME}, "virtual", $txtcmd );
-          Log3 $FHEM_Hash, 1, "_MMSOMFY_DispatchRemoteCmd " .  $name . " set :$txtcmd: to ".$rawhash->{NAME}." returned  " . $ret if ( $ret );
-        }
-
-      } else {
-        Log3 $FHEM_Hash, 1, "_MMSOMFY_DispatchRemoteCmd MMSOMFY rawDevice $rawdev not found from $name";
-      }
-    }
-    } else {
-        Log3 $FHEM_Hash, 1, "_MMSOMFY_DispatchRemoteCmd No rawDevice set in remote $name";
-    }
-    Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_DispatchRemoteCmd ($FHEM_Hash->{NAME}): Exit");
-}
-
-#############################
 sub MMSOMFY_Parse($$) {
-    Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Parse ($FHEM_Hash->{NAME}): Enter");
+    (my $Caller, my $msg) = @_;
+    Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): Enter");
 
-    ($FHEM_Hash, my $msg) = @_;
-    my $name = $FHEM_Hash->{NAME};
+    my $name = $Caller->{NAME};
 
     my $ret;
-    my $ioType = $FHEM_Hash->{TYPE};
+    my $ioType = $Caller->{TYPE};
 
     # preprocessing if IODev is SIGNALduino
     if ($ioType eq "SIGNALduino") {
@@ -2135,7 +2154,7 @@ sub MMSOMFY_Parse($$) {
             return undef;
         }
 
-        Log3 $name, 4, "$name: Somfy RTS preprocessing check: $check enc: $encData dec: $decData";
+        Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): Somfy RTS preprocessing check: $check enc: $encData dec: $decData");
         $msg = substr($msg, 0, 2) . $decData;
     }
 
@@ -2150,23 +2169,23 @@ sub MMSOMFY_Parse($$) {
 
     # Check for correct length
     if ( length($msg) != 16 ) {
-        Log3 $name, 1, "$name: MMSOMFY_Parse : SOMFY incorrect length for command (".$msg.") / length should be 16";
+        Log3($Caller->{NAME}, 1, "MMSOMFY_Parse ($Caller->{NAME}): SOMFY incorrect length for command (".$msg."). Length should be 16");
         return undef;
     }
 
     # get address
     my $address = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
-    Log3 $name, 1, "$name: MMSOMFY_Parse : Address (".$address.")";
+    Log3($Caller->{NAME}, 1, "MMSOMFY_Parse ($Caller->{NAME}): Address (".$address.")");
 
     # get command and set new state
     my $cmd = sprintf("%X", hex(substr($msg, 4, 2)) & 0xF0);
-    if ($cmd eq "10") {
-        $cmd = "11"; # use "stop" instead of "go-my"
-    }
+#    if ($cmd eq "10") {
+#        $cmd = "11"; # use "stop" instead of "go-my"
+#    }
 
     my $newstate = $somfy_codes2cmd{ $cmd };
     my $def = $modules{MMSOMFY}{defptr}{$address};
-    Log3 $name, 1, "$name: MMSOMFY_Parse : Definition Name (".$def->{NAME}.")" if defined($def);
+    #Log3 $name, 1, "$name: MMSOMFY_Parse : Definition Name (".$def->{NAME}.")" if defined($def);
 
     if ( ($def) && (keys %{ $def }) ) {   # Check also for empty hash --> issue #5
         my @list;
@@ -2178,17 +2197,17 @@ sub MMSOMFY_Parse($$) {
 
             # update the state and log it
             # Debug "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
-            Log3 $name, 4, "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate   --> io is $ioType";
+            Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): $name msg: $msg  --> $cmd-$newstate  --> io is $ioType");
             readingsSingleUpdate($lh, "received", $cmd, 1);
             readingsSingleUpdate($lh, "parsestate", $newstate, 1);
 
-            _MMSOMFY_DispatchRemoteCmd($lh, $cmd ) if ( $lh->{MODEL} eq MMSOMFY::Model::remote );
+            MMSOMFY::Command::DispatchRemote($lh, $cmd ) if ( $lh->{MODEL} eq MMSOMFY::Model::remote );
 
             push(@list, $name);
         }
         # return list of affected devices
     
-        Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Parse ($FHEM_Hash->{NAME}): Exit");
+        Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): Exit");
         return @list;
 
     } else {
@@ -2196,8 +2215,8 @@ sub MMSOMFY_Parse($$) {
         my $rolling = substr($msg, 6, 4);
         my $encKey = substr($msg, 2, 2);
 
-        Log3 $FHEM_Hash, 1, "MMSOMFY Unknown device $address ($encKey $rolling), please define it";
-        Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Parse ($FHEM_Hash->{NAME}): Exit");
+        Log3 $Caller, 1, "MMSOMFY Unknown device $address ($encKey $rolling), please define it";
+        Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($FHEM_Hash->{NAME}): Exit");
         return "UNDEFINED MMSOMFY_$address MMSOMFY $address $encKey $rolling";
     }
 }
@@ -2263,7 +2282,8 @@ sub MMSOMFY_Set($@) {
         elsif (!defined($mode))
         {
             # ... if 2nd argument is a mode value ...
-            if (lc($args[0]) =~ m/(MMSOMFY::Mode::ToString('|'))/)
+            my $modelist = MMSOMFY::Mode::ToString('|');
+            if (lc($args[0]) =~ m/$modelist/)
             {
                 # ... take given mode value ...
                 $mode = lc(shift @args);
