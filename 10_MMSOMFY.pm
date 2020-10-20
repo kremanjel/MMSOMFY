@@ -1176,6 +1176,15 @@ package MMSOMFY::Command;
     };
 
     my %code2command = (
+        # Remotes doesn't support any commands but must decode them.
+        MMSOMFY::Model::remote => {
+            "10" => "go_my",       # stop or go my
+            "20" => "open",        # go up
+            "40" => "close",       # go down
+            "80" => "prog",        # pairing or unpairing
+            "90" => "wind_sun_9",  # wind and sun (sun + flag)
+            "A0" => "wind_only_a", # wind only (flag)
+        },
         MMSOMFY::Model::awning => {
             "10" => "go_my",       # stop or go my
             "20" => "open",        # go up
@@ -1508,6 +1517,89 @@ package MMSOMFY::Command;
         return $retval;
     }
 
+    sub Decode($$) {
+        (my $Caller, my $msg) = @_;
+        my $name = $Caller->{NAME};
+        my $ioType = $Caller->{TYPE};
+        main::Log3($name, 4, "MMSOMFY::Command ($name): Enter 'Decode'");
+
+        my %retval;
+
+        # preprocessing if IODev is SIGNALduino
+        if ($ioType eq "SIGNALduino")
+        {
+            main::Log3($name, 4, "MMSOMFY::Command::Decode ($name): Preprocessing for SIGNALduino");
+
+            my $encData = substr($msg, 2);
+            if (length($encData) >= 14)
+            {
+                if ($encData =~ m/[0-9A-F]+/)
+                {
+                    my $decData = RTS_Crypt("d", $name, $encData);
+                    my $check = RTS_Check($name, $decData);
+
+                    if ($check eq substr($decData, 3, 1))
+                    {
+                        $msg = substr($msg, 0, 2) . $decData;
+                    }
+                    else
+                    {
+                        main::Log3($name, 1, "MMSOMFY::Command::Decode ($name): Error - Somfy RTS checksum error :$encData:");
+                        $msg = undef;
+                    }
+                }
+                else
+                {
+                    main::Log3($name, 1, "MMSOMFY::Command::Decode ($name): Error - Somfy RTS message is too short :$encData:");
+                    $msg = undef;
+                }
+            }
+            else
+            {
+                main::Log3($name, 1, "MMSOMFY::Command::Decode ($name): Error - Somfy RTS message has wrong format :$encData:");
+                $msg = undef;
+            }
+        }
+
+        if (defined($msg))
+        {
+            # Msg-Format
+            # YsAA2F18F00085E8
+            if (substr($msg, 0, 2) ne "Yr" || substr($msg, 0, 2) ne "Yt")
+            {
+                # Check for correct length
+                if (length($msg) == 16)
+                {
+                    # Ys     AA         2          F          18F0        0085E8
+                    #    | enc_key | command & checksum | rolling_code | address
+                    $retval{'enc_key'} = substr($msg, 2, 2);
+                    # command is higher nibble of byte 3
+                    $retval{'command'} = sprintf("%X", hex(substr($msg, 4, 2)) & 0xF0);
+                    $retval{'command_desc'} = $code2command{MMSOMFY::Model::remote}{$retval{'command'}};
+                    # checksum is lower nibble of byte 3
+                    $retval{'checksum'} = sprintf("%X", hex(substr($msg, 4, 2)) & 0x0F);
+                    # rolling code
+                    $retval{'rolling_code'} = substr($msg, 6, 4);
+                    # address needs bytes 14 and 16 swapped
+                    $retval{'address'} = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
+                }
+                else
+                {
+                    main::Log3($Caller->{NAME}, 1, "MMSOMFY_Parse ($Caller->{NAME}): SOMFY incorrect length for command (".$msg."). Length should be 16");
+                }
+            }
+            else
+            {
+                main::Log3($Caller->{NAME}, 1, "MMSOMFY_Parse ($Caller->{NAME}): Changed time or repetition. Ignore message.");
+            }
+        }
+
+        main::Log3($Caller->{NAME}, 4, "MMSOMFY::Command ($Caller->{NAME}): Exit 'Decode'");
+
+        return %retval;
+    }
+
+
     sub DispatchRemote($$) {
         (my $Remote_FHEM_Hash, my $code) = @_;
         main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($Remote_FHEM_Hash->{NAME}): Enter 'DispatchRemote'");
@@ -1517,7 +1609,7 @@ package MMSOMFY::Command;
         # check if rdev is defined and exists
         if (defined($rawdAttr))
         {
-            main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCammand ($Remote_FHEM_Hash->{NAME}): rawDevice is '$rawdAttr'");
+            main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): rawDevice is '$rawdAttr'");
             
             # normalize address in rawdev
             $rawdAttr = uc($rawdAttr);
@@ -1566,6 +1658,7 @@ package MMSOMFY::Command;
         main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($Remote_FHEM_Hash->{NAME}): Exit 'DispatchRemoteCommand'");
     }
 
+    # use first byte and then XORs byte wise with the previous byte until byte 7.
     sub RTS_Crypt($$$) {
         my ($operation, $name, $data) = @_;
         main::Log3($name, 4, "MMSOMFY::Command ($name): Enter 'RTS_Crypt'");
@@ -1580,6 +1673,15 @@ package MMSOMFY::Command;
 
             my $val = $high ^ $low;
             $res .= sprintf("%02X", $val);
+        }
+
+        if ($operation eq "e")
+        {
+            main::Log3($name, 4, "MMSOMFY::Command::RTS_Crypt ($name): dec: $data => enc: $res");
+        }
+        else
+        {
+            main::Log3($name, 4, "MMSOMFY::Command::RTS_Crypt ($name): enc: $data => dec: $res");
         }
 
         main::Log3($name, 4, "MMSOMFY::Command ($name): Exit 'RTS_Crypt'");
@@ -1599,6 +1701,7 @@ package MMSOMFY::Command;
         }
 
         $checkSum &= hex("0x0F");
+        main::Log3($name, 4, "MMSOMFY::Command::RTS_Check ($name): checksum: ". sprintf("%X", $checkSum));
 
         main::Log3($name, 4, "MMSOMFY::Command ($name): Exit 'RTS_Check'");
         return sprintf("%X", $checkSum);
@@ -2130,94 +2233,47 @@ sub MMSOMFY_Parse($$) {
     (my $Caller, my $msg) = @_;
     Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): Enter");
 
-    my $name = $Caller->{NAME};
+    my $retval;
 
-    my $ret;
-    my $ioType = $Caller->{TYPE};
+    my %command = MMSOMFY::Command::Decode($Caller, $msg);
 
-    # preprocessing if IODev is SIGNALduino
-    if ($ioType eq "SIGNALduino") {
-        my $encData = substr($msg, 2);
-        $ret = "Somfy RTS message format error (length)! :".$encData.":" if (length($encData) < 14);
-        $ret = "Somfy RTS message format error! :".$encData.":" if ( ( ! $ret ) && ($encData !~ m/[0-9A-F]{14}/) );
+    if (keys %command)
+    {
+        my $def = $modules{MMSOMFY}{defptr}{$command{'address'}};
 
-        my ( $decData, $check );
-        if ( ! $ret ) {
-            $decData = MMSOMFY::Command::RTS_Crypt("d", $name, $encData);
-            $check = MMSOMFY::Command::RTS_Check($name, $decData);
+        if ($def && (keys %{$def}))
+        {
+            my @list;
+            foreach my $name (keys %{$def})
+            {
+                my $lh = $def->{$name};
+                $name = $lh->{NAME};        # It may be renamed
+
+                unless(IsIgnored($name))
+                {
+                    if ($lh->{MODEL} eq MMSOMFY::Model::remote)
+                    {
+                        # update the state and log it
+                        # Debug "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
+                        Log3($Caller->{NAME}, 2, "MMSOMFY_Parse ($Caller->{NAME}): $msg => Command $command{'command_desc'}($command{'command'}) from remote $name($command{'address'})");
+                        readingsSingleUpdate($lh, "received", $command{'command'}, 1);
+                        readingsSingleUpdate($lh, "command", $command{'command_desc'}, 1);
+
+                        MMSOMFY::Command::DispatchRemote($lh, $command{'command'});
+
+                        push(@list, $name);
+                    }
+                }
+            }
+            # return list of affected devices
+            $retval = join(",", @list);
+        } else {
+            Log3($Caller->{NAME}, 1, "MMSOMFY_Parse ($Caller->{NAME}): Unknown device $command{'address'} ($command{'enk_key'} $command{'rolling_code'}), please define it.");
+            $retval = "UNDEFINED MMSOMFY_$command{'address'} MMSOMFY $command{'address'} remote $command{'enk_key'} $command{'rolling_code'}";
         }
 
-        $ret = "Somfy RTS checksum error! :".$encData.":" if ( ( ! $ret ) && ($check ne substr($decData, 3, 1)) );
-
-        if ( $ret ) {
-            Log3 $name, 1, "$name: MMSOMFY_Parse : ".$ret;
-            return undef;
-        }
-
-        Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): Somfy RTS preprocessing check: $check enc: $encData dec: $decData");
-        $msg = substr($msg, 0, 2) . $decData;
-    }
-
-    # Msg format:
-    # Ys AB 2C 004B 010010
-    # address needs bytes 1 and 3 swapped
-
-    if (substr($msg, 0, 2) eq "Yr" || substr($msg, 0, 2) eq "Yt") {
-        # changed time or repetition, just return the name
-        return "";
-    }
-
-    # Check for correct length
-    if ( length($msg) != 16 ) {
-        Log3($Caller->{NAME}, 1, "MMSOMFY_Parse ($Caller->{NAME}): SOMFY incorrect length for command (".$msg."). Length should be 16");
-        return undef;
-    }
-
-    # get address
-    my $address = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
-    Log3($Caller->{NAME}, 1, "MMSOMFY_Parse ($Caller->{NAME}): Address (".$address.")");
-
-    # get command and set new state
-    my $cmd = sprintf("%X", hex(substr($msg, 4, 2)) & 0xF0);
-#    if ($cmd eq "10") {
-#        $cmd = "11"; # use "stop" instead of "go-my"
-#    }
-
-    my $newstate = $somfy_codes2cmd{ $cmd };
-    my $def = $modules{MMSOMFY}{defptr}{$address};
-    #Log3 $name, 1, "$name: MMSOMFY_Parse : Definition Name (".$def->{NAME}.")" if defined($def);
-
-    if ( ($def) && (keys %{ $def }) ) {   # Check also for empty hash --> issue #5
-        my @list;
-        foreach my $name (keys %{ $def }) {
-            my $lh = $def->{$name};
-            $name = $lh->{NAME};        # It may be renamed
-
-            return "" if(IsIgnored($name));
-
-            # update the state and log it
-            # Debug "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
-            Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): $name msg: $msg  --> $cmd-$newstate  --> io is $ioType");
-            readingsSingleUpdate($lh, "received", $cmd, 1);
-            readingsSingleUpdate($lh, "parsestate", $newstate, 1);
-
-            MMSOMFY::Command::DispatchRemote($lh, $cmd ) if ( $lh->{MODEL} eq MMSOMFY::Model::remote );
-
-            push(@list, $name);
-        }
-        # return list of affected devices
-    
         Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): Exit");
-        return @list;
-
-    } else {
-        # rolling code and enckey
-        my $rolling = substr($msg, 6, 4);
-        my $encKey = substr($msg, 2, 2);
-
-        Log3 $Caller, 1, "MMSOMFY Unknown device $address ($encKey $rolling), please define it";
-        Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($FHEM_Hash->{NAME}): Exit");
-        return "UNDEFINED MMSOMFY_$address MMSOMFY $address $encKey $rolling";
+        return $retval;
     }
 }
 
