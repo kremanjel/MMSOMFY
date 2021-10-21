@@ -30,45 +30,6 @@
 #
 ################################################################################
 
-# Enumeration implementation for MMSOMFY::Definition
-package MMSOMFY::Definition;
-
-    use strict;
-    use warnings;
-
-    # enumeration items
-    use constant {
-        MODEL => "MODEL",
-        TIMIMNG => "TIMING",
-    };
-
-    # Get string with all items of enumeration separated by given character.
-    # If separation character is not set, space will be used.
-    sub ToString {
-        my ($sepChar) = @_;
-        $sepChar = " " unless defined $sepChar;
-
-        no strict 'refs';
-        my $pkg = __PACKAGE__;
-        my $stash = $pkg . "::";
-        my @consts;
-
-        for my $name (sort keys %$stash)
-        {
-            ### is it a subentry?
-            my $sub = $pkg->can($name);
-            next unless defined $sub;
-            next unless defined prototype($sub) and not length prototype($sub);
-            push @consts, $name;
-        }
-
-        return join($sepChar, @consts);
-    }
-
-1;
-
-################################################################################
-
 # Enumeration implementation for MMSOMFY::Mode
 package MMSOMFY::Mode;
 
@@ -105,6 +66,7 @@ package MMSOMFY::Mode;
     }
 
 1;
+
 ################################################################################
 
 # Enumeration implementation for MMSOMFY::Movement
@@ -206,6 +168,7 @@ package MMSOMFY::State;
         receiving => "receiving",
         inactive => "inactive",
         ignored => "ignored",
+        unknown => "unknown",
     };
 
     # Get string with all items of enumeratione separated by given character.
@@ -232,6 +195,89 @@ package MMSOMFY::State;
     }
 
 1;
+
+################################################################################
+
+# Enumeration implementation for MMSOMFY::Definition
+package MMSOMFY::Definition;
+
+    use strict;
+    use warnings;
+
+    # enumeration items
+    use constant {
+        MODEL => "MODEL",
+        TIMIMNG => "TIMING",
+        RUNNING => "RUNNING",
+    };
+
+    # Get string with all items of enumeration separated by given character.
+    # If separation character is not set, space will be used.
+    sub ToString {
+        my ($sepChar) = @_;
+        $sepChar = " " unless defined $sepChar;
+
+        no strict 'refs';
+        my $pkg = __PACKAGE__;
+        my $stash = $pkg . "::";
+        my @consts;
+
+        for my $name (sort keys %$stash)
+        {
+            ### is it a subentry?
+            my $sub = $pkg->can($name);
+            next unless defined $sub;
+            next unless defined prototype($sub) and not length prototype($sub);
+            push @consts, $name;
+        }
+
+        return join($sepChar, @consts);
+    }
+
+    sub Initialize($$) {
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Definition ($main::FHEM_Hash->{NAME}): Enter 'Intialize'");
+
+        my ($address, $model) = @_;
+
+        $main::FHEM_Hash->{ADDRESS} = uc($address);
+        $main::FHEM_Hash->{MMSOMFY::Definition::MODEL} = lc($model);
+
+        if
+            (
+                $main::FHEM_Hash->{MMSOMFY::Definition::TIMIMNG} &&
+                $model ne MMSOMFY::Model::awning &&
+                $model ne MMSOMFY::Model::shutter
+            )
+        {
+            delete($main::FHEM_Hash->{MMSOMFY::Definition::TIMIMNG});
+        }
+
+        if ($model eq MMSOMFY::Model::switch)
+        {
+            $main::FHEM_Hash->{STATE} = MMSOMFY::State::off;
+        }
+        elsif ($model eq MMSOMFY::Model::remote)
+        {
+            $main::FHEM_Hash->{STATE} = MMSOMFY::State::receiving;
+        }
+        elsif
+            (
+                $model eq MMSOMFY::Model::awning ||
+                $model eq MMSOMFY::Model::shutter
+            )
+        {
+            $main::FHEM_Hash->{STATE} = MMSOMFY::State::opened;
+        }
+        else
+        {
+            $main::FHEM_Hash->{STATE} = MMSOMFY::State::unknown;
+        }
+
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Definition ($main::FHEM_Hash->{NAME}): Exit 'Intialize'");
+    }
+
+1;
+
 ################################################################################
 
 # Enumeration implementation for MMSOMFY::Attribute providing
@@ -264,6 +310,7 @@ package MMSOMFY::Attribute;
     # If separation charcter is not set space will be used.
     # item and value are separated by ":"
     sub AddSpecificAttributes {
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Enter 'AddSpecificAttributes'");
 
         # values for enumeration items.
         # if set they must be separated by colon from the itemname.
@@ -342,6 +389,8 @@ package MMSOMFY::Attribute;
                 main::addToDevAttrList($main::FHEM_Hash->{NAME}, $name . $values{$name});
             }
         }
+
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Exit 'AddSpecificAttributes'");
     }
 
     # Checks that changing attribute values results in valid states.
@@ -780,14 +829,19 @@ package MMSOMFY::Reading;
 
     # enumeration items
     use constant {
-        exact => "exact",
-        position => "position",
+        # all
         state => "state",
-        movement => "movement",
         enc_key => "enc_key",
         rolling_code => "rolling_code",
+        # shutter/awning/switch
+        active_command => "active_command",
+        # shutter/awning
+        exact => "exact",
+        position => "position",
+        movement => "movement",
+        # remote
         received => "received",
-        parsestate => "parsestate",
+        command => "command",
     };
 
     # Get string with all items of enumeration separated by given character.
@@ -811,6 +865,10 @@ package MMSOMFY::Reading;
         }
 
         return join($sepChar, @consts);
+    }
+
+    sub Initialize {
+
     }
 
     # Update Readings according given position value and moving.
@@ -1195,8 +1253,8 @@ package MMSOMFY::Command;
             "A0" => "wind_only_a", # wind only (flag)
         },
         MMSOMFY::Model::switch => {
-            "20" => "on",          # go up
-            "40" => "off",         # go down
+            "20" => "off",         # go up
+            "40" => "on",          # go down
             "80" => "prog",        # pairing or unpairing
         },
     );
@@ -1629,8 +1687,8 @@ package MMSOMFY::Command;
                         if ($cmd)
                         {
                             main::Log3($Remote_FHEM_Hash, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Send command '$cmd'.");
-                            # add virtual as modifier to set command and directly call send
-                            my $ret = main::MMSOMFY_Set($rawhash, $rawhash->{NAME}, MMSOMFY::Mode::virtual, $cmd );
+                            # add virtual as modifier to set command without calling send
+                            my $ret = main::MMSOMFY_Set($rawhash, $rawhash->{NAME}, MMSOMFY::Mode::virtual, $cmd);
                             if ($ret)
                             {
                                 main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): '$rawhash->{NAME}' returned '$ret' for command '$cmd'.");
@@ -1638,11 +1696,13 @@ package MMSOMFY::Command;
                             else
                             {
                                 main::Log3($Remote_FHEM_Hash, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): command '$cmd' succeeded for '$rawhash->{NAME}'.");
+                                # trigger update of readings, as there may be updates during RemoteCommand.
+                                main::DoTrigger($rawhash->{NAME}, undef);
                             }
                         }
                         else
                         {
-                            main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Command '$cmd' is not valid for remote device '$rawhash->{NAME}'");
+                            main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Command code '$code' is not valid for remote device '$rawhash->{NAME}'");
                         }
                     }
                 } else {
@@ -1765,7 +1825,7 @@ package MMSOMFY::Command;
                     #... and model is not switch ...
                     ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} ne MMSOMFY::Model::switch)
                 )
-            { 
+            {
                 # ... convert enckey from string to hex ..
                 my $enckey_increment = hex($enckey);
 
@@ -1879,24 +1939,99 @@ package MMSOMFY::Command;
 # Implementation for MMSOMFY::DeviceModel
 package MMSOMFY::DeviceModel;
 
-sub Update ($$$)
+sub Initialize($$)
+{
+    (my $oldModel, my $newModel) = @_;
+
+    my $model = $main::FHEM_Hash->{MMSOMFY::Definition::MODEL};
+    if ($model eq MMSOMFY::Model::switch)
+    {
+    }
+    elsif
+        (
+            $model eq MMSOMFY::Model::awning ||
+            $model eq MMSOMFY::Model::shutter
+        )
+    {
+        main::Log3($main::FHEM_Hash->{NAME}, 3, "Handle Awning or Shutter.");
+    }
+    else
+    {
+        main::Log3($main::FHEM_Hash->{NAME}, 3, "Unhandled model.");
+    }
+}
+
+sub TimerCallback($)
+{
+    ($main::FHEM_Hash) = @_;
+    main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'TimerCallback'");
+
+    my $cmd = $main::FHEM_Hash->{MMSOMFY::Definition::RUNNING};
+    delete $main::FHEM_Hash->{MMSOMFY::Definition::RUNNING};
+
+    if ($cmd eq MMSOMFY::Command::on_for_timer)
+    {
+        main::MMSOMFY_Set($main::FHEM_Hash, $main::FHEM_Hash->{NAME}, MMSOMFY::Command::off);
+    }
+    elsif ($cmd eq MMSOMFY::Command::off_for_timer)
+    {
+        main::MMSOMFY_Set($main::FHEM_Hash, $main::FHEM_Hash->{NAME}, MMSOMFY::Command::on);
+    }
+    else
+    {
+        main::Log3($main::FHEM_Hash->{NAME}, 1, "MMSOMFY::DeviceModel::TimerCallback ($main::FHEM_Hash->{NAME}): Error - Unknown running command."); 
+    }
+
+    main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'TimerCallback'");
+}
+
+sub UpdateSwitch($$$)
+{
+    main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'UpdateSwitch'");
+    (my $mode, my $cmd, my $cmdargs) = @_;
+    my $deviceCommand;
+
+    if ($cmd =~ m/on/)
+    {
+        $main::FHEM_Hash->{STATE} = MMSOMFY::State::on;
+        main::readingsSingleUpdate($main::FHEM_Hash, MMSOMFY::Reading::state, MMSOMFY::State::on, 1);
+        $deviceCommand = MMSOMFY::Command::on if ($mode eq MMSOMFY::Mode::send);
+    }
+    elsif ($cmd =~ m/off/)
+    {
+        $main::FHEM_Hash->{STATE} = MMSOMFY::State::off;
+        main::readingsSingleUpdate($main::FHEM_Hash, MMSOMFY::Reading::state, MMSOMFY::State::off, 1);
+        $deviceCommand = MMSOMFY::Command::off if ($mode eq MMSOMFY::Mode::send);
+    }
+
+    if ($cmd =~ m/timer/)
+    {
+        $main::FHEM_Hash->{MMSOMFY::Definition::RUNNING} = $cmd;
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel::UpdateSwitch ($main::FHEM_Hash->{NAME}): Start timer for command '$main::FHEM_Hash->{MMSOMFY::Definition::RUNNING}'");
+        main::InternalTimer((main::gettimeofday()+$cmdargs), "MMSOMFY::DeviceModel::TimerCallback", $main::FHEM_Hash);
+    }
+
+    main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'UpdateSwitch'");
+    return $deviceCommand
+}
+
+sub Update($$$)
 {
     main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'Update'");
     (my $mode, my $cmd, my $cmdargs) = @_;
     my $deviceCommand;
 
+    if (defined($main::FHEM_Hash->{RUNNING}))
+    {
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel::Update ($main::FHEM_Hash->{NAME}): Abort running command '$main::FHEM_Hash->{RUNNING}'");
+        main::RemoveInternalTimer($main::FHEM_Hash);
+        delete($main::FHEM_Hash->{RUNNING});
+    }
+
     my $model = $main::FHEM_Hash->{MMSOMFY::Definition::MODEL};
     if ($model eq MMSOMFY::Model::switch)
     {
-        main::Log3($main::FHEM_Hash->{NAME}, 3, "Handle Switch.");
-        if
-            (
-                $cmd eq MMSOMFY::Command::on_for_timer ||
-                $cmd eq MMSOMFY::Command::off_for_timer
-            )
-        {
-            # Start timer for reversed command
-        }
+        $deviceCommand = UpdateSwitch($mode, $cmd, $cmdargs);
     }
     elsif
         (
@@ -1922,6 +2057,7 @@ package main;
 use strict;
 use warnings;
 use Scalar::Util qw(looks_like_number);
+use Data::Dumper;
 
 our $FHEM_Hash;
 
@@ -2004,7 +2140,7 @@ sub MMSOMFY_Initialize($) {
     $FHEM_Hash->{UndefFn}       = "MMSOMFY_Undef";
     # $FHEM_Hash->{DeleteFn}    = "X_Delete";
     $FHEM_Hash->{SetFn}         = "MMSOMFY_Set";
-    # $FHEM_Hash->{GetFn}       = "X_Get"; # Not used as you can't get data from SOMFY RTS
+    # $FHEM_Hash->{GetFn}       = "X_Get";
     $FHEM_Hash->{AttrFn}        = "MMSOMFY_Attr";
     # $FHEM_Hash->{ReadFn}      = "X_Read";
     # $FHEM_Hash->{ReadyFn}     = "X_Ready";
@@ -2032,6 +2168,13 @@ sub MMSOMFY_Initialize($) {
 ################################################################################
 sub MMSOMFY_Define($$) {
     ($FHEM_Hash, my $def) = @_;
+
+    # Clear existing attributes in case of modify def, so we start without attributes.
+    %{$attr{$FHEM_Hash->{NAME}}} = ();
+
+    # Set verbose to 5 for debugging. Todo Remove
+    $attr{$FHEM_Hash->{NAME}}{"verbose"} = 5;
+
     Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Define ($FHEM_Hash->{NAME}): Enter");
 
     my @a = split("[ \t][ \t]*", $def);
@@ -2068,10 +2211,6 @@ sub MMSOMFY_Define($$) {
     # reset reading time on def to 0 seconds (1970)
     my $tzero = FmtDateTime(0);
 
-    $FHEM_Hash->{ADDRESS} = uc($address);
-    $FHEM_Hash->{MMSOMFY::Definition::MODEL} = lc($model);
-    $FHEM_Hash->{STATE} = MMSOMFY::State::inactive;
-
     # check optional arguments for device definition
     if (int(@a) > 4) 
     {
@@ -2104,11 +2243,8 @@ sub MMSOMFY_Define($$) {
     $FHEM_Hash->{CODE}{$ncode++} = $code;
     $modules{MMSOMFY}{defptr}{$code}{$name} = $FHEM_Hash;
 
-    # Clear existing attributes in case of modify def, so we start without attributes.
-    %{$attr{$name}} = ();
-
-    # Set verbose to 5 for debugging. Todo Remove
-    $attr{$name}{"verbose"} = 5;
+    # Initilaize definitions for instance depending on model.
+    MMSOMFY::Definition::Initialize($address, $model);
 
     # Add the device specific attributes to the instance depending on model.
     MMSOMFY::Attribute::AddSpecificAttributes;
@@ -2252,7 +2388,7 @@ sub MMSOMFY_Parse($$) {
     (my $Caller, my $msg) = @_;
     Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): Enter");
 
-    my $retval;
+    my $retval = undef;
 
     my %command = MMSOMFY::Command::Decode($Caller, $msg);
 
@@ -2263,6 +2399,7 @@ sub MMSOMFY_Parse($$) {
         if ($def && (keys %{$def}))
         {
             my @list;
+
             foreach my $name (keys %{$def})
             {
                 my $lh = $def->{$name};
@@ -2275,8 +2412,8 @@ sub MMSOMFY_Parse($$) {
                         # update the state and log it
                         # Debug "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
                         Log3($Caller->{NAME}, 3, "MMSOMFY_Parse ($Caller->{NAME}): Command $command{'command_desc'}($command{'command'}) from remote $name($command{'address'})");
-                        readingsSingleUpdate($lh, "received", $command{'command'}, 1);
-                        readingsSingleUpdate($lh, "command", $command{'command_desc'}, 1);
+                        readingsSingleUpdate($lh, MMSOMFY::Reading::received, $command{'command'}, 1);
+                        readingsSingleUpdate($lh, MMSOMFY::Reading::command, $command{'command_desc'}, 1);
 
                         MMSOMFY::Command::DispatchRemote($lh, $command{'command'});
 
@@ -2284,16 +2421,17 @@ sub MMSOMFY_Parse($$) {
                     }
                 }
             }
+
             # return list of affected devices
             $retval = join(",", @list);
         } else {
             Log3($Caller->{NAME}, 1, "MMSOMFY_Parse ($Caller->{NAME}): Unknown device $command{'address'} ($command{'enc_key'} $command{'rolling_code'}), please define it.");
             $retval = "UNDEFINED MMSOMFY_$command{'address'} MMSOMFY $command{'address'} remote";
         }
-
-        Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): Exit");
-        return $retval;
     }
+
+    Log3($Caller->{NAME}, 4, "MMSOMFY_Parse ($Caller->{NAME}): Exit");
+    return $retval;
 }
 
 ##############################################################################
@@ -2329,9 +2467,7 @@ sub MMSOMFY_Parse($$) {
 # call with hash, name, [virtual/send], set-args   (send is default if ommitted)
 # hash name [mode] [cmd|val] [val]
 sub MMSOMFY_Set($@) {
-    my @args = @_;
-    # HASH is 0th argument
-    $FHEM_Hash = shift @args;
+    ($FHEM_Hash, my @args) = @_;
 
     Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Set ($FHEM_Hash->{NAME}): Enter");
 
