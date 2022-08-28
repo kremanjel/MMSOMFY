@@ -168,7 +168,6 @@ package MMSOMFY::State;
         on => "on",
         position => "position",
         receiving => "receiving",
-        inactive => "inactive",
         ignored => "ignored",
         unknown => "unknown",
     };
@@ -200,8 +199,8 @@ package MMSOMFY::State;
 
 ################################################################################
 
-# Enumeration implementation for MMSOMFY::Definition
-package MMSOMFY::Definition;
+# Enumeration implementation for MMSOMFY::Internal
+package MMSOMFY::Internal;
 
     use strict;
     use warnings;
@@ -236,6 +235,30 @@ package MMSOMFY::Definition;
         return join($sepChar, @consts);
     }
 
+    # Clear all device specific definitions.
+    sub Clear {
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Internal ($main::FHEM_Hash->{NAME}): Enter 'Clear'");
+
+        my ($sepChar) = @_;
+        $sepChar = " " unless defined $sepChar;
+
+        no strict 'refs';
+        my $pkg = __PACKAGE__;
+        my $stash = $pkg . "::";
+        my @consts;
+
+        for my $name (sort keys %$stash)
+        {
+            ### is it a subentry?
+            my $sub = $pkg->can($name);
+            next unless defined $sub;
+            next unless defined prototype($sub) and not length prototype($sub);
+            delete($main::FHEM_Hash->{$name})
+        }
+
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Internal ($main::FHEM_Hash->{NAME}): Exit 'Clear'");
+    }
+
 1;
 
 ################################################################################
@@ -264,13 +287,58 @@ package MMSOMFY::Attribute;
         ignore => 'ignore',
         rawDevice => 'rawDevice',
         userattr => 'userattr',
+        webCmd => 'webCmd',
+        devStateIcon => 'devStateIcon',
+        cmdIcon => 'cmdIcon',
     };
+
+    sub Clear {
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            4,
+            "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Enter 'Clear'"
+        );
+
+        no strict 'refs';
+        my $pkg = __PACKAGE__;
+        my $stash = $pkg . "::";
+        my @consts;
+
+        for my $name (sort keys %$stash)
+        {
+            ### is it a subentry?
+            my $sub = $pkg->can($name);
+            next unless defined $sub;
+            next unless defined prototype($sub) and not length prototype($sub);
+
+            if (defined($main::attr{$main::FHEM_Hash->{NAME}}{$name}))
+            {
+                main::Log3(
+                    $main::FHEM_Hash->{NAME},
+                    4,
+                    "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Remove $name"
+                );
+
+                delete($main::attr{$main::FHEM_Hash->{NAME}}{$name});
+            }
+        }
+
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            4,
+            "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Exit 'Clear'"
+        );
+    }
 
     # Get string with all items and values of enumeratione separated by given character.
     # If separation charcter is not set space will be used.
     # item and value are separated by ":"
     sub AddSpecificAttributes {
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Enter 'AddSpecificAttributes'");
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            4,
+            "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Enter 'AddSpecificAttributes'"
+        );
 
         # values for enumeration items.
         # if set they must be separated by colon from the itemname.
@@ -289,6 +357,7 @@ package MMSOMFY::Attribute;
             ignore => ":0,1",
             rawDevice => "",
             userattr => "",
+            webCmd => "",
         );
 
         my ($sepChar) = @_;
@@ -309,18 +378,19 @@ package MMSOMFY::Attribute;
             if
                 (
                     # ... attribute is for all models ...
-                    ($name eq MMSOMFY::Attribute::ignore) ||
+                    # ... currently none ...
 
                     # ... or attribute belongs to set model ...
                     (
                         # ... remotes ...
-                        ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::remote) &&
+                        ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::remote) &&
                         (
+                            ($name eq MMSOMFY::Attribute::ignore) ||
                             ($name eq MMSOMFY::Attribute::rawDevice)
                         )
                     ) || (
                         # ... switches ...
-                        ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::switch) &&
+                        ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::switch) &&
                         (
                             ($name eq MMSOMFY::Attribute::symbolLength) ||
                             ($name eq MMSOMFY::Attribute::repetition) ||
@@ -329,8 +399,8 @@ package MMSOMFY::Attribute;
                     ) || (
                         # ... awnings and shutters ...
                         (
-                            ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning) ||
-                            ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter)
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning) ||
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter)
                         ) && (
                             ($name eq MMSOMFY::Attribute::symbolLength) ||
                             ($name eq MMSOMFY::Attribute::repetition) ||
@@ -346,11 +416,21 @@ package MMSOMFY::Attribute;
                     )
                 )
             {
+                main::Log3(
+                    $main::FHEM_Hash->{NAME},
+                    4,
+                    "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Add $name$values{$name}"
+                );
+                
                 main::addToDevAttrList($main::FHEM_Hash->{NAME}, $name . $values{$name});
             }
         }
 
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Exit 'AddSpecificAttributes'");
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            4,
+            "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Exit 'AddSpecificAttributes'"
+        );
     }
 
     # Checks that changing attribute values results in valid states.
@@ -367,12 +447,36 @@ package MMSOMFY::Attribute;
             # ... then continue depending on attribute name ...
             switch ($attrName)
             {
+                case MMSOMFY::Attribute::webCmd
+                {
+                    # If init is already done ...
+                    if ($init_done)
+                    {
+                        # ... web commands shall not be modified by user therefore error is returned.
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName cannot be modified.";
+                    }
+                    # ... otherwise ...
+                    else
+                    {
+                        # ... just keep the web commands as they are already set properly by definition.
+                        # Value to be set here comes from fhem.cfg and can contain obsolete attributes in case of update.
+                        $_[2] = main::AttrVal($name, MMSOMFY::Attribute::webCmd, $_[2]);
+                    }
+                }
                 case MMSOMFY::Attribute::userattr
                 {
+                    # If init is already done ...
                     if ($init_done)
                     {
                         # ... user attributes shall not be modified by user therefore error is returned.
-                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName cannot be modfied.";
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName cannot be modified.";
+                    }
+                    # ... otherwise ...
+                    else
+                    {
+                        # ... just keep the user attributes as they are already set properly by definition.
+                        # Value to be set here comes from fhem.cfg and can contain obsolete attributes in case of update.
+                        $_[2] = main::AttrVal($name, MMSOMFY::Attribute::userattr, $_[2]);
                     }
                 }
                 case MMSOMFY::Attribute::driveTimeOpenedToDown
@@ -381,7 +485,7 @@ package MMSOMFY::Attribute;
                     if ($cmd eq "set")
                     {
                         # ... if model is a shutter, attribute is supported ...
-                        if ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter)
+                        if ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter)
                         {
                             # ... check validity of value to be set ...
                             $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeOpenedToClosed, $main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToClosed}, "smaller");
@@ -390,7 +494,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " only.";
                         }
                     }
 
@@ -405,8 +509,8 @@ package MMSOMFY::Attribute;
                         # ... if model is a shutter or awning, attribute is supported ...
                         if
                             (
-                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter) ||
-                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning)
+                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
                             )
                         {
                             # ... check validity of value to be set ...
@@ -416,7 +520,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
                         }
                     }
 
@@ -429,7 +533,7 @@ package MMSOMFY::Attribute;
                     if ($cmd eq "set")
                     {
                         # ... if model is a shutter, attribute is supported ...
-                        if ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter)
+                        if ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter)
                         {
                             # ... check validity of value to be set ...
                             $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeClosedToOpened, $main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToOpened}, "smaller");
@@ -438,7 +542,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " only.";
                         }
                     }
 
@@ -453,8 +557,8 @@ package MMSOMFY::Attribute;
                         # ... if model is a shutter or awning, attribute is supported ...
                         if
                             (
-                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter) ||
-                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning)
+                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
                             )
                         {
                             # ... check validity of value to be set ...
@@ -464,7 +568,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
                         }
                     }
 
@@ -479,8 +583,8 @@ package MMSOMFY::Attribute;
                         # ... if model is a shutter or awning, attribute is supported ...
                         if
                             (
-                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter) ||
-                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning)
+                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
                             )
                         {
                             # ... check if it is within position range ...
@@ -494,7 +598,7 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
                         }
                     }
                 }
@@ -506,8 +610,8 @@ package MMSOMFY::Attribute;
                         # ... if model is a shutter or awning, attribute is supported ...
                         if
                             (
-                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter) ||
-                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning)
+                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
                             )
                         {
                             # ... if there is already a reading with given name ...
@@ -521,12 +625,27 @@ package MMSOMFY::Attribute;
                         else
                         {
                             # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Definition::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
                         }
+                    }
+                }
+                # for remotes only
+                case MMSOMFY::Attribute::ignore
+                {
+                    # ...  preset state to receving ...
+                    $main::FHEM_Hash->{STATE} = MMSOMFY::State::receiving;
+
+                    # ... if attribute shall be set ...
+                    if ($cmd eq "set" && $attrValue eq 1)
+                    {
+                        # ... state is changed to ignored.
+                        $main::FHEM_Hash->{STATE} = MMSOMFY::State::ignored;
                     }
                 }
             }
         }
+
+        main::Log3($main::FHEM_Hash->{NAME}, 1, $retval) if (defined($retval));
 
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Attribute ($main::FHEM_Hash->{NAME}): Exit 'CheckAttribute'");
         
@@ -657,19 +776,19 @@ package MMSOMFY::Timing;
                 if (defined($tempTimings{MMSOMFY::Attribute::driveTimeClosedToDown}) && defined($tempTimings{MMSOMFY::Attribute::driveTimeOpenedToDown}))
                 {
                     # ... then set TIMING to extended.
-                    $main::FHEM_Hash->{TIMING} = MMSOMFY::Timing::extended
+                    $main::FHEM_Hash->{MMSOMFY::Internal::TIMING} = MMSOMFY::Timing::extended
                 }
                 else
                 {
                     # ... otherwise TIMING is basic.
-                    $main::FHEM_Hash->{TIMING} = MMSOMFY::Timing::basic
+                    $main::FHEM_Hash->{MMSOMFY::Internal::TIMING} = MMSOMFY::Timing::basic
                 }
             }
             # ... otherwise ...
             else
             {
                 # ... TIMING is off as the values can not be used.
-                $main::FHEM_Hash->{TIMING} = MMSOMFY::Timing::off
+                $main::FHEM_Hash->{MMSOMFY::Internal::TIMING} = MMSOMFY::Timing::off
             }
             
         }
@@ -700,7 +819,7 @@ package MMSOMFY::Timing;
 
         my $retval = undef;
         
-        if ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::extended)
+        if ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
         {
             $retval = $main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToDown};
         }
@@ -734,7 +853,7 @@ package MMSOMFY::Timing;
 
         my $retval = undef;
         
-        if ($main::FHEM_Hash->{TIMING} ne MMSOMFY::Timing::off)
+        if ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} ne MMSOMFY::Timing::off)
         {
             $retval = $main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToOpened};
         }
@@ -768,7 +887,7 @@ package MMSOMFY::Timing;
 
         my $retval = undef;
         
-        if ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::extended)
+        if ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
         {
             $retval = $main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToOpened} - $main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToDown};
         }
@@ -791,7 +910,6 @@ package MMSOMFY::Reading;
     # enumeration items
     use constant {
         # all
-        state => "state",
         enc_key => "enc_key",
         rolling_code => "rolling_code",
         # shutter/awning/switch
@@ -828,6 +946,50 @@ package MMSOMFY::Reading;
         return join($sepChar, @consts);
     }
 
+    sub Clear {
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Reading ($main::FHEM_Hash->{NAME}): Enter 'Clear'");
+
+        no strict 'refs';
+        my $pkg = __PACKAGE__;
+        my $stash = $pkg . "::";
+        my @consts;
+
+        for my $name (sort keys %$stash)
+        {
+            ### is it a subentry?
+            my $sub = $pkg->can($name);
+            next unless defined $sub;
+            next unless defined prototype($sub) and not length prototype($sub);
+            main::readingsDelete($main::FHEM_Hash, $name)
+        }
+
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Reading ($main::FHEM_Hash->{NAME}): Exit 'Clear'");
+    }
+
+    # Set common readings if values are set.
+    sub SetCommon($$) {
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Reading ($main::FHEM_Hash->{NAME}): Enter 'SetCommon'");
+
+        my ($enc_key, $roll_code) = @_;
+
+        # reset reading time on def to 0 seconds (1970)
+        my $tzero = main::FmtDateTime(0);
+
+        if (defined($enc_key))
+        {
+            main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::Reading ($main::FHEM_Hash->{NAME}): Set " . MMSOMFY::Reading::enc_key . " to $enc_key");
+            main::setReadingsVal($main::FHEM_Hash, MMSOMFY::Reading::enc_key, $enc_key, $tzero);
+        }
+
+        if (defined($roll_code))
+        {
+            main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::Reading ($main::FHEM_Hash->{NAME}): Set " . MMSOMFY::Reading::rolling_code . " to $roll_code");
+            main::setReadingsVal($main::FHEM_Hash, MMSOMFY::Reading::rolling_code, $roll_code, $tzero);
+        }
+
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Reading ($main::FHEM_Hash->{NAME}): Exit 'SetCommon'");
+    }
+
     # Update Readings according given position value and moving.
     sub PositionUpdate($$) {
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Reading ($main::FHEM_Hash->{NAME}): Enter 'Update'");
@@ -844,11 +1006,12 @@ package MMSOMFY::Reading;
 
         main::readingsBulkUpdate($main::FHEM_Hash, MMSOMFY::Reading::exact, $newExact);
         main::readingsBulkUpdate($main::FHEM_Hash, MMSOMFY::Reading::position, $newPosition);
-        main::readingsBulkUpdate($main::FHEM_Hash, MMSOMFY::Reading::state, $newState);
 
         my $addtlPosReading = main::AttrVal($name, MMSOMFY::Attribute::additionalPosReading, undef);
         if (defined($addtlPosReading))
         {
+            # Normalize name of reading, replacing invalid characters with underscore.
+            $addtlPosReading = main::makeReadingName($addtlPosReading);
             main::Log3($name, 5, "MMSOMFY::Reading ($main::FHEM_Hash->{NAME}): Update additionalPosReading for $name, $addtlPosReading:$newPosition.");
             main::readingsBulkUpdate($main::FHEM_Hash, $addtlPosReading, $newPosition);
         }
@@ -886,10 +1049,13 @@ package MMSOMFY::Position;
     # Stepwidth from frame settings
     use constant STEPWIDTH => RANGE/STEPS;
 
+    # Range from down to closed
+    use constant DOWNRANGE => 1*STEPWIDTH;
+
     # Mapping from state to position without inversion.
     my %state2position = (
         MMSOMFY::State::opened => min(ENDPOS,STARTPOS),
-        MMSOMFY::State::down => max(ENDPOS,STARTPOS)-STEPWIDTH,
+        MMSOMFY::State::down => max(ENDPOS,STARTPOS)-DOWNRANGE,
         MMSOMFY::State::closed => max(ENDPOS,STARTPOS),
     );
 
@@ -931,25 +1097,25 @@ package MMSOMFY::Position;
         }
 
         # get state to determine the position
-        my $state = main::ReadingsVal($name, MMSOMFY::Reading::state, undef);
+        #my $state = main::ReadingsVal($name, MMSOMFY::Reading::state, undef);
 
         # if also not available get position from current state
-        unless (defined($retval))
-        {
-            if (defined($state))
-            {
-                $retval = FromState($state);
-                main::Log3($name, 5, "MMSOMFY::Position::Current: " .  $name . " got position value: " . $retval . " from state " . $state) if (defined($retval));
-            }
-        }
+        #unless (defined($retval))
+        #{
+        #    if (defined($state))
+        #    {
+        #        $retval = FromState($state);
+        #        main::Log3($name, 5, "MMSOMFY::Position::Current: " .  $name . " got position value: " . $retval . " from state " . $state) if (defined($retval));
+        #    }
+        #}
 
         # if state gives no position it may be already a position
-        unless (defined($retval))
-        {
-            $retval = $state if looks_like_number($state);
-            $retval = sprintf( "%d", $retval ) if (defined($retval));
-            main::Log3($name, 5, "MMSOMFY::Position::Current: " .  $name . " got position value: " . $retval . " from state " . $state) if (defined($retval));
-        }
+        #unless (defined($retval))
+        #{
+        #    $retval = $state if looks_like_number($state);
+        #    $retval = sprintf( "%d", $retval ) if (defined($retval));
+        #    main::Log3($name, 5, "MMSOMFY::Position::Current: " .  $name . " got position value: " . $retval . " from state " . $state) if (defined($retval));
+        #}
 
         # if position is still not clear it is not known and will be set to minimum depending on positionInverse
         unless (defined($retval))
@@ -1176,8 +1342,6 @@ package MMSOMFY::Command;
         prog => "prog",
         close_for_timer => "close_for_timer",
         open_for_timer => "open_for_timer",
-        #on_for_timer => "on_for_timer",
-        #off_for_timer => "off_for_timer",
         z_custom => "z_custom",
         go_my => "go_my",
         position => "position",
@@ -1193,6 +1357,8 @@ package MMSOMFY::Command;
             "20" => "up",          # go up
             "40" => "down",        # go down
             "80" => "prog",        # pairing or unpairing
+            "90" => "wind_sun_9",  # wind and sun (sun + flag)
+            "A0" => "wind_only_a", # wind only (flag)
         },
         MMSOMFY::Model::awning => {
             "10" => "go_my",       # stop or go my
@@ -1226,8 +1392,6 @@ package MMSOMFY::Command;
         "prog" => "80",            # prog
         "close_for_timer" => "40", # down
         "open_for_timer" => "20",  # up
-        #"on_for_timer" => "40",    # down
-        #"off_for_timer" => "20",   # up
         "z_custom" => "XX",        # user defined
         "go_my" => "10",           # go_my
         "wind_sun_9" => "90",      # wind_sun_9
@@ -1307,7 +1471,7 @@ package MMSOMFY::Command;
             z_custom => ":textField",
             go_my => ":noArg",
             position => ":" . MMSOMFY::Position::ToString(','),
-            manual => ":" . ((defined($main::FHEM_Hash->{TIMING}) and $main::FHEM_Hash->{TIMING} ne MMSOMFY::Timing::off) ? MMSOMFY::Position::ToString(',') ."," : "") . "open,close",
+            manual => ":" . ((defined($main::FHEM_Hash->{MMSOMFY::Internal::TIMING}) and $main::FHEM_Hash->{MMSOMFY::Internal::TIMING} ne MMSOMFY::Timing::off) ? MMSOMFY::Position::ToString(',') ."," : "") . "open,close",
             wind_sun_9 => ":noArg",
             wind_only_a => ":noArg",
         );
@@ -1332,11 +1496,11 @@ package MMSOMFY::Command;
                     # Commmand list depends on model
                     (
                         # ... for remotes there are also no commands ...
-                        ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} ne MMSOMFY::Model::remote) &&
+                        ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} ne MMSOMFY::Model::remote) &&
                         (
                             (
                                 # ... for switches following commands are available ...
-                                ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::switch) &&
+                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::switch) &&
                                 (
                                     ($name eq MMSOMFY::Command::on) ||
                                     ($name eq MMSOMFY::Command::off) ||
@@ -1346,12 +1510,11 @@ package MMSOMFY::Command;
                             ) || (
                                 # ... for awning and shutter following commands are available ...
                                 (
-                                    ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::awning) ||
-                                    ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} eq MMSOMFY::Model::shutter)
+                                    ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning) ||
+                                    ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter)
                                 ) && (
                                     ($name eq MMSOMFY::Command::open) ||
                                     ($name eq MMSOMFY::Command::close) ||
-                                    ($name eq MMSOMFY::Command::stop) ||
                                     ($name eq MMSOMFY::Command::prog) ||
                                     ($name eq MMSOMFY::Command::z_custom) ||
                                     ($name eq MMSOMFY::Command::manual) ||
@@ -1359,12 +1522,13 @@ package MMSOMFY::Command;
                                     ($name eq MMSOMFY::Command::wind_only_a) ||
                                     (
                                         (
+                                            ($name eq MMSOMFY::Command::stop) ||
                                             ($name eq MMSOMFY::Command::position) ||
                                             ($name eq MMSOMFY::Command::close_for_timer) ||
                                             ($name eq MMSOMFY::Command::open_for_timer)
                                         ) && (
-                                            exists($main::FHEM_Hash->{TIMING}) &&
-                                            ($main::FHEM_Hash->{TIMING} ne MMSOMFY::Timing::off)
+                                            exists($main::FHEM_Hash->{MMSOMFY::Internal::TIMING}) &&
+                                            ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} ne MMSOMFY::Timing::off)
                                         )
                                     ) || (
                                         ($name eq MMSOMFY::Command::go_my) &&
@@ -1410,11 +1574,11 @@ package MMSOMFY::Command;
 
         # ... create command list without arguments ...
         my $cmdListwoArg = MMSOMFY::Command::ToString("|", 1);
-        main::Log3($name, 1, "MMSOMFY::Command::Check ($name): CMDListwoArgs: $cmdListwoArg");
+        main::Log3($name, 5, "MMSOMFY::Command::Check ($name): CMDListwoArgs: $cmdListwoArg") if defined($cmdListwoArg);
 
         # ... and command list with arguments ...
         my $cmdListwithArg = MMSOMFY::Command::ToString("|", 0);
-        main::Log3($name, 1, "MMSOMFY::Command::Check ($name): CMDListwithArgs: $cmdListwithArg");
+        main::Log3($name, 5, "MMSOMFY::Command::Check ($name): CMDListwithArgs: $cmdListwithArg") if defined($cmdListwithArg);
 
         if
             (
@@ -1694,7 +1858,7 @@ package MMSOMFY::Command;
         # check if rdev is defined and exists
         if (defined($rawdAttr))
         {
-            main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): rawDevice is '$rawdAttr'");
+            main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): rawDevice is '$rawdAttr'");
             
             # normalize address in rawdev
             $rawdAttr = uc($rawdAttr);
@@ -1709,38 +1873,38 @@ package MMSOMFY::Command;
                     foreach my $n (keys %{$slist})
                     {
                         my $rawhash = $main::modules{MMSOMFY}{defptr}{$rawdev}{$n};
-                        main::Log3($Remote_FHEM_Hash, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Found remote MMSOMFY device '$rawhash->{NAME}'");
+                        main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Found remote MMSOMFY device '$rawhash->{NAME}'");
 
-                        my $rawModel = $rawhash->{MODEL};
+                        my $rawModel = $rawhash->{MMSOMFY::Internal::MODEL};
                         my $cmd = $code2command{$rawModel}{$code};
 
                         if ($cmd)
                         {
-                            main::Log3($Remote_FHEM_Hash, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Send command '$cmd'.");
+                            main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Send command '$cmd'.");
                             # add virtual as modifier to set command without calling send
                             my $ret = main::MMSOMFY_Set($rawhash, $rawhash->{NAME}, MMSOMFY::Mode::virtual, $cmd);
                             if ($ret)
                             {
-                                main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): '$rawhash->{NAME}' returned '$ret' for command '$cmd'.");
+                                main::Log3($Remote_FHEM_Hash->{NAME}, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): '$rawhash->{NAME}' returned '$ret' for command '$cmd'.");
                             }
                             else
                             {
-                                main::Log3($Remote_FHEM_Hash, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): command '$cmd' succeeded for '$rawhash->{NAME}'.");
+                                main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): command '$cmd' succeeded for '$rawhash->{NAME}'.");
                                 # trigger update of readings, as there may be updates during RemoteCommand.
                                 main::DoTrigger($rawhash->{NAME}, undef);
                             }
                         }
                         else
                         {
-                            main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Command code '$code' is not valid for remote device '$rawhash->{NAME}'");
+                            main::Log3($Remote_FHEM_Hash->{NAME}, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Command code '$code' is not valid for remote device '$rawhash->{NAME}'");
                         }
                     }
                 } else {
-                    main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): rawDevice '$rawdev' not found.");
+                    main::Log3($Remote_FHEM_Hash->{NAME}, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): rawDevice '$rawdev' not found.");
                 }
             }
         } else {
-            main::Log3($Remote_FHEM_Hash, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): No rawDevice defined in '$Remote_FHEM_Hash->{NAME}'");
+            main::Log3($Remote_FHEM_Hash->{NAME}, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): No rawDevice defined in '$Remote_FHEM_Hash->{NAME}'");
         }
         main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($Remote_FHEM_Hash->{NAME}): Exit 'DispatchRemoteCommand'");
     }
@@ -1816,7 +1980,7 @@ package MMSOMFY::Command;
 
         my $retval = undef;
         my $name = $main::FHEM_Hash->{NAME};
-        my $model = $main::FHEM_Hash->{MODEL};
+        my $model = $main::FHEM_Hash->{MMSOMFY::Internal::MODEL};
         my $io = $main::FHEM_Hash->{IODev};
         my $ioType = $io->{TYPE};
         my $message = undef;
@@ -1853,7 +2017,7 @@ package MMSOMFY::Command;
                     # ... enckey is not fixed ...
                     (!main::AttrVal($name, MMSOMFY::Attribute::fixedEnckey, 0)) &&
                     #... and model is not switch ...
-                    ($main::FHEM_Hash->{MMSOMFY::Definition::MODEL} ne MMSOMFY::Model::switch)
+                    ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} ne MMSOMFY::Model::switch)
                 )
             {
                 # ... convert enckey from string to hex ..
@@ -1969,26 +2133,55 @@ package MMSOMFY::Command;
 # Implementation for MMSOMFY::DeviceModel
 package MMSOMFY::DeviceModel;
 
-    sub Initialize($$) {
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'Intialize'");
+    sub Initialize($$$$) {
+        # Set verbose to 5 for debugging. Todo Remove
+        $main::attr{$main::FHEM_Hash->{NAME}}{"verbose"} = 5;
 
-        my ($address, $model) = @_;
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            4,
+            "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'Intialize'"
+        );
 
-        main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Set address to '$address'");
+        my ($address, $model, $encryptionkey, $rollingcode) = @_;
+
+        MMSOMFY::Internal::Clear();
+        MMSOMFY::Reading::Clear();
+        MMSOMFY::Attribute::Clear();
+
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            5,
+            "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Set address to '$address'"
+        );
+        
         $main::FHEM_Hash->{ADDRESS} = uc($address);
 
-        main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Set model to '$model'");
-        $main::FHEM_Hash->{MMSOMFY::Definition::MODEL} = lc($model);
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            5,
+            "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Set model to '$model'"
+        );
+        
+        $main::FHEM_Hash->{MMSOMFY::Internal::MODEL} = lc($model);
+
+        # Add the device specific attributes to the instance depending on model.
+        MMSOMFY::Attribute::AddSpecificAttributes();
+
+        # Set common readings for device if set.
+        MMSOMFY::Reading::SetCommon($encryptionkey, $rollingcode);
 
         if ($model eq MMSOMFY::Model::switch)
         {
             $main::FHEM_Hash->{STATE} = MMSOMFY::State::off;
-            delete($main::FHEM_Hash->{MMSOMFY::Definition::TIMING}) if ($main::FHEM_Hash->{MMSOMFY::Definition::TIMING});
+            $main::attr{$main::FHEM_Hash->{NAME}}{webCmd} = "toggle";
+            $main::attr{$main::FHEM_Hash->{NAME}}{devStateIcon} = "off:15px-grey on:15px-green";
+            $main::attr{$main::FHEM_Hash->{NAME}}{cmdIcon} = "toggle:control_standby";
         }
         elsif ($model eq MMSOMFY::Model::remote)
         {
             $main::FHEM_Hash->{STATE} = MMSOMFY::State::receiving;
-            delete($main::FHEM_Hash->{MMSOMFY::Definition::TIMING}) if ($main::FHEM_Hash->{MMSOMFY::Definition::TIMING});
+            $main::attr{$main::FHEM_Hash->{NAME}}{devStateIcon} = "receiving:it_wifi";
         }
         elsif
             (
@@ -1997,19 +2190,26 @@ package MMSOMFY::DeviceModel;
             )
         {
             $main::FHEM_Hash->{STATE} = MMSOMFY::State::opened;
-            $main::FHEM_Hash->{TIMING} = MMSOMFY::Timing::off;
-            $main::attr{$main::FHEM_Hash->{NAME}}{devStateIcon} = "0:fts_window_2w 10:fts_shutter_10 20:fts_shutter_20 30:fts_shutter_30 40:fts_shutter_40 50:fts_shutter_50 60:fts_shutter_60 70:fts_shutter_70 80:fts_shutter_80 90:fts_shutter_90 100:fts_shutter_100";
-            $main::attr{$main::FHEM_Hash->{NAME}}{webCmd} = "open:stop:close";
-            $main::attr{$main::FHEM_Hash->{NAME}}{cmdIcon} = "open:control_centr_arrow_up close:control_centr_arrow_down stop:rc_STOP";
-            $main::attr{$main::FHEM_Hash->{NAME}}{stateFormat} = "position"; #"{100-ReadingsVal($name, "position", 50);}"
-            MMSOMFY::Reading::PositionUpdate(0.0, MMSOMFY::Movement::none);
+            $main::FHEM_Hash->{MMSOMFY::Internal::TIMING} = MMSOMFY::Timing::off;
+            #$main::attr{$main::FHEM_Hash->{NAME}}{devStateIcon} = "0:fts_window_2w 10:fts_shutter_10 20:fts_shutter_20 30:fts_shutter_30 40:fts_shutter_40 50:fts_shutter_50 60:fts_shutter_60 70:fts_shutter_70 80:fts_shutter_80 90:fts_shutter_90 100:fts_shutter_100";
+            $main::attr{$main::FHEM_Hash->{NAME}}{devStateIcon} = "opened:fts_window_2w closed:fts_shutter_100";
+            #$main::attr{$main::FHEM_Hash->{NAME}}{webCmd} = "open:stop:close";
+            $main::attr{$main::FHEM_Hash->{NAME}}{webCmd} = "open:close";
+            #$main::attr{$main::FHEM_Hash->{NAME}}{cmdIcon} = "open:control_centr_arrow_up close:control_centr_arrow_down stop:rc_STOP";
+            $main::attr{$main::FHEM_Hash->{NAME}}{cmdIcon} = "open:control_centr_arrow_up close:control_centr_arrow_down";
+            #$main::attr{$main::FHEM_Hash->{NAME}}{stateFormat} = "position"; #"{100-ReadingsVal($name, "position", 50);}"
+            #MMSOMFY::Reading::PositionUpdate(0.0, MMSOMFY::Movement::none);
         }
         else
         {
             $main::FHEM_Hash->{STATE} = MMSOMFY::State::unknown;
         }
 
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'Intialize'");
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            4,
+            "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'Intialize'"
+        );
     }
 
 # sub TimerCallback($)
@@ -2017,8 +2217,8 @@ package MMSOMFY::DeviceModel;
 #     ($main::FHEM_Hash) = @_;
 #     main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'TimerCallback'");
 
-#     my $cmd = $main::FHEM_Hash->{MMSOMFY::Definition::RUNNING};
-#     delete $main::FHEM_Hash->{MMSOMFY::Definition::RUNNING};
+#     my $cmd = $main::FHEM_Hash->{MMSOMFY::Internal::RUNNING};
+#     delete $main::FHEM_Hash->{MMSOMFY::Internal::RUNNING};
 
 #     # if ($cmd eq MMSOMFY::Command::on_for_timer)
 #     # {
@@ -2036,50 +2236,61 @@ package MMSOMFY::DeviceModel;
 #     main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'TimerCallback'");
 # }
 
-    sub UpdateSwitch($$$)
+    sub UpdateSwitch($$)
     {
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'UpdateSwitch'");
-        (my $mode, my $cmd, my $cmdargs) = @_;
-        my $deviceCommand;
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            4,
+            "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'UpdateSwitch'"
+        );
 
-        # Cancel any other Extension function
-        main::SetExtensionsCancel($main::FHEM_Hash);
+        my ($cmd, $cmdargs) = @_;
 
-        if ($cmd =~ m/on/)
+        if ($cmd eq MMSOMFY::Command::on)
         {
             $main::FHEM_Hash->{STATE} = MMSOMFY::State::on;
-            main::readingsSingleUpdate($main::FHEM_Hash, MMSOMFY::Reading::state, MMSOMFY::State::on, 1);
-            $deviceCommand = MMSOMFY::Command::on if ($mode eq MMSOMFY::Mode::send);
         }
-        elsif ($cmd =~ m/off/)
+        elsif ($cmd eq MMSOMFY::Command::off)
         {
             $main::FHEM_Hash->{STATE} = MMSOMFY::State::off;
-            main::readingsSingleUpdate($main::FHEM_Hash, MMSOMFY::Reading::state, MMSOMFY::State::off, 1);
-            $deviceCommand = MMSOMFY::Command::off if ($mode eq MMSOMFY::Mode::send);
         }
 
-        # Can be removed
-        # if ($cmd =~ m/timer/)
-        # {
-        #     $main::FHEM_Hash->{MMSOMFY::Definition::RUNNING} = $cmd;
-        #     main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel::UpdateSwitch ($main::FHEM_Hash->{NAME}): Start timer for command '$main::FHEM_Hash->{MMSOMFY::Definition::RUNNING}'");
-        #     main::InternalTimer((main::gettimeofday()+$cmdargs), "MMSOMFY::DeviceModel::TimerCallback", $main::FHEM_Hash);
-        # }
+        main::Log3(
+            $main::FHEM_Hash->{NAME},
+            4, 
+            "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'UpdateSwitch'"
+        );
+    }
 
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'UpdateSwitch'");
-        return $deviceCommand
+    sub UpdateAwningShutter($$)
+    {
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'UpdateAwningShutter'");
+        my ($cmd, $cmdargs) = @_;
+
+        if ($cmd eq MMSOMFY::Command::open)
+        {
+            $main::FHEM_Hash->{STATE} = MMSOMFY::State::opened;
+        }
+        elsif ($cmd eq MMSOMFY::Command::close)
+        {
+            $main::FHEM_Hash->{STATE} = MMSOMFY::State::closed;
+        }
+
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'UpdateAwningShutter'");
     }
 
     sub Update($$$)
     {
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'Update'");
-        (my $mode, my $cmd, my $cmdargs) = @_;
-        my $deviceCommand;
+        my ($mode, $cmd, $cmdargs) = @_;
 
-        my $model = $main::FHEM_Hash->{MMSOMFY::Definition::MODEL};
+        # Cancel any other Extension function
+        main::SetExtensionsCancel($main::FHEM_Hash);
+
+        my $model = $main::FHEM_Hash->{MMSOMFY::Internal::MODEL};
         if ($model eq MMSOMFY::Model::switch)
         {
-            $deviceCommand = UpdateSwitch($mode, $cmd, $cmdargs);
+            UpdateSwitch($cmd, $cmdargs);
         }
         elsif
             (
@@ -2087,21 +2298,21 @@ package MMSOMFY::DeviceModel;
                 $model eq MMSOMFY::Model::shutter
             )
         {
-            main::Log3($main::FHEM_Hash->{NAME}, 3, "Handle Awning or Shutter.");
-            if (defined($main::FHEM_Hash->{RUNNING}))
-            {
-                main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel::Update ($main::FHEM_Hash->{NAME}): Abort running command '$main::FHEM_Hash->{RUNNING}'");
-                main::RemoveInternalTimer($main::FHEM_Hash);
-                delete($main::FHEM_Hash->{RUNNING});
-            }
+            UpdateAwningShutter($cmd, $cmdargs);
         }
         else
         {
             main::Log3($main::FHEM_Hash->{NAME}, 3, "Unhandled model.");
         }
 
+        if ($mode eq MMSOMFY::Mode::virtual)
+        {
+            $cmd = undef;
+            $cmdargs = undef;
+        }
+
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'Update'");
-        return $deviceCommand
+        return ($cmd, $cmdargs)
     }
 
 1;
@@ -2223,12 +2434,6 @@ sub MMSOMFY_Initialize($) {
 sub MMSOMFY_Define($$) {
     ($FHEM_Hash, my $def) = @_;
 
-    # Clear existing attributes in case of modify def, so we start without attributes.
-    %{$attr{$FHEM_Hash->{NAME}}} = ();
-
-    # Set verbose to 5 for debugging. Todo Remove
-    $attr{$FHEM_Hash->{NAME}}{"verbose"} = 5;
-
     Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Define ($FHEM_Hash->{NAME}): Enter");
 
     my @a = split("[ \t][ \t]*", $def);
@@ -2261,9 +2466,8 @@ sub MMSOMFY_Define($$) {
     my $name  = $a[0];
     my $address = $a[2];
     my $model = $a[3];
-
-    # reset reading time on def to 0 seconds (1970)
-    my $tzero = FmtDateTime(0);
+    my $encryptionkey = undef;
+    my $rollingcode = undef;
 
     # check optional arguments for device definition
     if (int(@a) > 4) 
@@ -2275,8 +2479,8 @@ sub MMSOMFY_Define($$) {
             return $errormessage;
         }
 
-        # store it as reading, so it is saved in the statefile
-        setReadingsVal($FHEM_Hash, MMSOMFY::Reading::enc_key, uc($a[4]), $tzero);
+        # set enc key uppercase
+        $encryptionkey = uc($a[4]);
     }
 
     if (int(@a) > 5)
@@ -2288,8 +2492,8 @@ sub MMSOMFY_Define($$) {
             return $errormessage;
         }
 
-        # store it
-        setReadingsVal($FHEM_Hash,  MMSOMFY::Reading::rolling_code, uc($a[5]), $tzero);
+        # set rolling code uppercase
+        $rollingcode = uc($a[5]);
     }
 
     my $code  = uc($address);
@@ -2298,18 +2502,8 @@ sub MMSOMFY_Define($$) {
     $modules{MMSOMFY}{defptr}{$code}{$name} = $FHEM_Hash;
 
     # Initialize definitions for instance depending on model.
-    MMSOMFY::DeviceModel::Initialize($address, $model);
+    MMSOMFY::DeviceModel::Initialize($address, $model, $encryptionkey, $rollingcode);
 
-    # Add the device specific attributes to the instance depending on model.
-    MMSOMFY::Attribute::AddSpecificAttributes;
-
-#    ! Set default attributes !
-#    setReadingsVal($FHEM_Hash, MMSOMFY::Reading::position, MMSOMFY::Position::Current, $tzero);
-#    setReadingsVal($FHEM_Hash, MMSOMFY::Reading::exact, MMSOMFY::Position::Current, $tzero);
-#    setReadingsVal($FHEM_Hash, MMSOMFY::Reading::movement, MMSOMFY::Movement::none, $tzero);
-#    setReadingsVal($FHEM_Hash, MMSOMFY::Reading::state, MMSOMFY::State::opened, $tzero);
-#    $FHEM_Hash->{TIMING} = MMSOMFY::Timing::off;
-#    $FHEM_Hash->{STATE} = MMSOMFY::State::opened;
     AssignIoPort($FHEM_Hash);
 
     Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Define ($FHEM_Hash->{NAME}): Exit");
@@ -2361,7 +2555,8 @@ sub MMSOMFY_Attr(@) {
 
     return "\"MMSOMFY Attr: \" $name does not exist" if (!defined($FHEM_Hash));
     Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Attr ($FHEM_Hash->{NAME} / $aName): Enter");
-    Log3($FHEM_Hash->{NAME}, 5, "MMSOMFY_Attr ($FHEM_Hash->{NAME}): $cmd $aName ($aVal)");
+    Log3($FHEM_Hash->{NAME}, 5, "MMSOMFY_Attr ($FHEM_Hash->{NAME}): $cmd $aName ($aVal)") if (defined($aVal));
+    Log3($FHEM_Hash->{NAME}, 5, "MMSOMFY_Attr ($FHEM_Hash->{NAME}): $cmd $aName") if (!defined($aVal));
     
     my $retval = undef;
 
@@ -2461,7 +2656,7 @@ sub MMSOMFY_Parse($$) {
 
                 unless(IsIgnored($name))
                 {
-                    if ($lh->{MODEL} eq MMSOMFY::Model::remote)
+                    if ($lh->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::remote)
                     {
                         # update the state and log it
                         # Debug "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
@@ -2606,18 +2801,12 @@ sub MMSOMFY_Set($@) {
         # Command shall be executed.
         # Write log message for command to be executed.
         my $logmessage = "MMSOMFY_set ($name): Handling with mode: $mode / cmd: $cmd";
-        if (defined($cmdarg))
-        {
-            $logmessage = $logmessage . " / cmdarg: $cmdarg";
-        }
+        $logmessage .= " / cmdarg: $cmdarg" if defined($cmdarg);
         Log3($name, 3, $logmessage);
 
-        my $deviceCommand = MMSOMFY::DeviceModel::Update($mode, $cmd, $cmdarg);
+        ($cmd, $cmdarg) = MMSOMFY::DeviceModel::Update($mode, $cmd, $cmdarg);
 
-        if(defined($deviceCommand))
-        {
-            MMSOMFY::Command::Send2Device($cmd, $cmdarg);
-        }
+        MMSOMFY::Command::Send2Device($cmd, $cmdarg) if defined($cmd);
     }
 
     Log3($FHEM_Hash->{NAME}, 4, "MMSOMFY_Set ($FHEM_Hash->{NAME}): Exit");
@@ -2730,12 +2919,12 @@ sub _MMSOMFY_CalcCurrentPos($$$) {
     my $newPos = $pos;
 
     # If there are no timings position can not be calculated and remain set statically.
-    if ($FHEM_Hash->{TIMING} eq MMSOMFY::Timing::off)
+    if ($FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::off)
     {
         Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Position set statically as no timings are defined.");
     }
     # ... else if basic timing settings are available ...
-    elsif ($FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic)
+    elsif ($FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::basic)
     {
         Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Basic Timing is defiend. No down position.");
 
@@ -2759,7 +2948,7 @@ sub _MMSOMFY_CalcCurrentPos($$$) {
         }
     }
     # ... else if extended timings are set, split ranges on down barrier.
-    elsif ($FHEM_Hash->{TIMING} eq MMSOMFY::Timing::extended)
+    elsif ($FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
     {
         Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Separate down position. Splitting ranges if necessray.");
 
