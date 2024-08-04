@@ -270,7 +270,6 @@ package MMSOMFY::Attribute;
 
     use strict;
     use warnings;
-    use Switch;
     use Data::Dumper;
 
     #enumeration items
@@ -446,202 +445,199 @@ package MMSOMFY::Attribute;
         if (MMSOMFY::Attribute->can($attrName))
         {
             # ... then continue depending on attribute name ...
-            switch ($attrName)
+            if ($attrName eq MMSOMFY::Attribute::webCmd)
             {
-                case MMSOMFY::Attribute::webCmd
+                # If init is already done ...
+                if ($init_done)
                 {
-                    # If init is already done ...
-                    if ($init_done)
+                    # ... web commands shall not be modified by user therefore error is returned.
+                    $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName cannot be modified.";
+                }
+                # ... otherwise ...
+                else
+                {
+                    # ... just keep the web commands as they are already set properly by definition.
+                    # Value to be set here comes from fhem.cfg and can contain obsolete attributes in case of update.
+                    $_[2] = main::AttrVal($name, MMSOMFY::Attribute::webCmd, $_[2]);
+                }
+            }
+            elsif ($attrName eq MMSOMFY::Attribute::userattr)
+            {
+                # If init is already done ...
+                if ($init_done)
+                {
+                    # ... user attributes shall not be modified by user therefore error is returned.
+                    $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName cannot be modified.";
+                }
+                # ... otherwise ...
+                else
+                {
+                    # ... just keep the user attributes as they are already set properly by definition.
+                    # Value to be set here comes from fhem.cfg and can contain obsolete attributes in case of update.
+                    $_[2] = main::AttrVal($name, MMSOMFY::Attribute::userattr, $_[2]);
+                }
+            }
+            elsif ($attrName eq MMSOMFY::Attribute::driveTimeOpenedToDown)
+            {
+                # ... if attribute shall be set ...
+                if ($cmd eq "set")
+                {
+                    # ... if model is a shutter, attribute is supported ...
+                    if ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter)
                     {
-                        # ... web commands shall not be modified by user therefore error is returned.
-                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName cannot be modified.";
+                        # ... check validity of value to be set ...
+                        $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeOpenedToClosed, $main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToClosed}, "smaller");
                     }
-                    # ... otherwise ...
+                    # ... otherwise attribute is not supported ...
                     else
                     {
-                        # ... just keep the web commands as they are already set properly by definition.
-                        # Value to be set here comes from fhem.cfg and can contain obsolete attributes in case of update.
-                        $_[2] = main::AttrVal($name, MMSOMFY::Attribute::webCmd, $_[2]);
+                        # ... error is returned.
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " only.";
                     }
                 }
-                case MMSOMFY::Attribute::userattr
+
+                # ... update Timing Setting if there is no error.
+                MMSOMFY::DeviceModel::Update($attrName, $attrValue) unless (defined($retval));
+            }
+            elsif ($attrName eq MMSOMFY::Attribute::driveTimeOpenedToClosed)
+            {
+                # ... if attribute shall be set ...
+                if ($cmd eq "set")
                 {
-                    # If init is already done ...
-                    if ($init_done)
+                    # ... if model is a shutter or awning, attribute is supported ...
+                    if
+                        (
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
+                        )
                     {
-                        # ... user attributes shall not be modified by user therefore error is returned.
-                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName cannot be modified.";
+                        # ... check validity of value to be set ...
+                        $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeOpenedToDown, $main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToDown}, "greater");
                     }
-                    # ... otherwise ...
+                    # ... otherwise attribute is not supported ...
                     else
                     {
-                        # ... just keep the user attributes as they are already set properly by definition.
-                        # Value to be set here comes from fhem.cfg and can contain obsolete attributes in case of update.
-                        $_[2] = main::AttrVal($name, MMSOMFY::Attribute::userattr, $_[2]);
+                        # ... error is returned.
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
                     }
                 }
-                case MMSOMFY::Attribute::driveTimeOpenedToDown
-                {
-                    # ... if attribute shall be set ...
-                    if ($cmd eq "set")
-                    {
-                        # ... if model is a shutter, attribute is supported ...
-                        if ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter)
-                        {
-                            # ... check validity of value to be set ...
-                            $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeOpenedToClosed, $main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToClosed}, "smaller");
-                        }
-                        # ... otherwise attribute is not supported ...
-                        else
-                        {
-                            # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " only.";
-                        }
-                    }
 
-                    # ... update Timing Setting if there is no error.
-                    MMSOMFY::DeviceModel::Update($attrName, $attrValue) unless (defined($retval));
-                }
-                case MMSOMFY::Attribute::driveTimeOpenedToClosed
+                # ... update Timing Setting if there is no error.
+                MMSOMFY::DeviceModel::Update($attrName, $attrValue) unless (defined($retval));
+            }
+            elsif ($attrName eq MMSOMFY::Attribute::driveTimeClosedToDown)
+            {
+                # ... if attribute shall be set ...
+                if ($cmd eq "set")
                 {
-                    # ... if attribute shall be set ...
-                    if ($cmd eq "set")
+                    # ... if model is a shutter, attribute is supported ...
+                    if ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter)
                     {
-                        # ... if model is a shutter or awning, attribute is supported ...
-                        if
-                            (
-                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
-                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
-                            )
-                        {
-                            # ... check validity of value to be set ...
-                            $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeOpenedToDown, $main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToDown}, "greater");
-                        }
-                        # ... otherwise attribute is not supported ...
-                        else
-                        {
-                            # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
-                        }
+                        # ... check validity of value to be set ...
+                        $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeClosedToOpened, $main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToOpened}, "smaller");
                     }
+                    # ... otherwise attribute is not supported ...
+                    else
+                    {
+                        # ... error is returned.
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " only.";
+                    }
+                }
 
-                    # ... update Timing Setting if there is no error.
-                    MMSOMFY::DeviceModel::Update($attrName, $attrValue) unless (defined($retval));
-                }
-                case MMSOMFY::Attribute::driveTimeClosedToDown
+                # ... update Timing Setting if there is no error.
+                MMSOMFY::DeviceModel::Update($attrName, $attrValue) unless (defined($retval));
+            }
+            elsif ($attrName eq MMSOMFY::Attribute::driveTimeClosedToOpened)
+            {
+                # ... if attribute shall be set ...
+                if ($cmd eq "set")
                 {
-                    # ... if attribute shall be set ...
-                    if ($cmd eq "set")
+                    # ... if model is a shutter or awning, attribute is supported ...
+                    if
+                        (
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
+                        )
                     {
-                        # ... if model is a shutter, attribute is supported ...
-                        if ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter)
-                        {
-                            # ... check validity of value to be set ...
-                            $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeClosedToOpened, $main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToOpened}, "smaller");
-                        }
-                        # ... otherwise attribute is not supported ...
-                        else
-                        {
-                            # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " only.";
-                        }
+                        # ... check validity of value to be set ...
+                        $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeClosedToDown, $main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToDown}, "greater");
                     }
+                    # ... otherwise attribute is not supported ...
+                    else
+                    {
+                        # ... error is returned.
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                    }
+                }
 
-                    # ... update Timing Setting if there is no error.
-                    MMSOMFY::DeviceModel::Update($attrName, $attrValue) unless (defined($retval));
-                }
-                case MMSOMFY::Attribute::driveTimeClosedToOpened
+                # ... update Timing Setting if there is no error.
+                MMSOMFY::DeviceModel::Update($attrName, $attrValue) unless (defined($retval));
+            }
+            elsif ($attrName eq MMSOMFY::Attribute::myPosition)
+            {
+                # ... if attribute shall be set ...
+                if ($cmd eq "set")
                 {
-                    # ... if attribute shall be set ...
-                    if ($cmd eq "set")
+                    # ... if model is a shutter or awning, attribute is supported ...
+                    if
+                        (
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
+                        )
                     {
-                        # ... if model is a shutter or awning, attribute is supported ...
-                        if
-                            (
-                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
-                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
-                            )
+                        # ... check if it is within position range ...
+                        if ($attrValue > MMSOMFY::Position::MaxPos() || $attrValue < MMSOMFY::Position::MinPos())
                         {
-                            # ... check validity of value to be set ...
-                            $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeClosedToDown, $main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToDown}, "greater");
-                        }
-                        # ... otherwise attribute is not supported ...
-                        else
-                        {
-                            # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                            # ... if outside bounds return error.
+                            $retval = "MMSOMFY::Attribute::CheckAttribute: Value for $attrName ($attrValue) must be between opened (" . MMSOMFY::Position::FromState(MMSOMFY::State::opened) . ") and closed (" . MMSOMFY::Position::FromState(MMSOMFY::State::closed) . ").";
                         }
                     }
+                    # ... otherwise attribute is not supported ...
+                    else
+                    {
+                        # ... error is returned.
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                    }
+                }
+            }
+            elsif ($attrName eq MMSOMFY::Attribute::additionalPosReading)
+            {
+                # ... if attribute shall be set ...
+                if ($cmd eq "set")
+                {
+                    # ... if model is a shutter or awning, attribute is supported ...
+                    if
+                        (
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                            ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
+                        )
+                    {
+                        # ... if there is already a reading with given name ...
+                        if (MMSOMFY::Reading->can($attrValue))
+                        {
+                            # ... return an error.
+                            $retval = "MMSOMFY::Attribute::CheckAttribute: Value for $attrName ($attrValue) cannot be set. Reading with same name exists.";
+                        }
+                    }
+                    # ... otherwise attribute is not supported ...
+                    else
+                    {
+                        # ... error is returned.
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                    }
+                }
+            }
+            # for remotes only
+            elsif ($attrName eq MMSOMFY::Attribute::ignore)
+            {
+                # ...  preset state to receving ...
+                $main::FHEM_Hash->{STATE} = MMSOMFY::State::receiving;
 
-                    # ... update Timing Setting if there is no error.
-                    MMSOMFY::DeviceModel::Update($attrName, $attrValue) unless (defined($retval));
-                }
-                case MMSOMFY::Attribute::myPosition
+                # ... if attribute shall be set ...
+                if ($cmd eq "set" && $attrValue eq 1)
                 {
-                    # ... if attribute shall be set ...
-                    if ($cmd eq "set")
-                    {
-                        # ... if model is a shutter or awning, attribute is supported ...
-                        if
-                            (
-                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
-                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
-                            )
-                        {
-                            # ... check if it is within position range ...
-                            if ($attrValue > MMSOMFY::Position::MaxPos() || $attrValue < MMSOMFY::Position::MinPos())
-                            {
-                                # ... if outside bounds return error.
-                                $retval = "MMSOMFY::Attribute::CheckAttribute: Value for $attrName ($attrValue) must be between opened (" . MMSOMFY::Position::FromState(MMSOMFY::State::opened) . ") and closed (" . MMSOMFY::Position::FromState(MMSOMFY::State::closed) . ").";
-                            }
-                        }
-                        # ... otherwise attribute is not supported ...
-                        else
-                        {
-                            # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
-                        }
-                    }
-                }
-                case MMSOMFY::Attribute::additionalPosReading
-                {
-                    # ... if attribute shall be set ...
-                    if ($cmd eq "set")
-                    {
-                        # ... if model is a shutter or awning, attribute is supported ...
-                        if
-                            (
-                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
-                                ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
-                            )
-                        {
-                            # ... if there is already a reading with given name ...
-                            if (MMSOMFY::Reading->can($attrValue))
-                            {
-                                # ... return an error.
-                                $retval = "MMSOMFY::Attribute::CheckAttribute: Value for $attrName ($attrValue) cannot be set. Reading with same name exists.";
-                            }
-                        }
-                        # ... otherwise attribute is not supported ...
-                        else
-                        {
-                            # ... error is returned.
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($main::FHEM_Hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
-                        }
-                    }
-                }
-                # for remotes only
-                case MMSOMFY::Attribute::ignore
-                {
-                    # ...  preset state to receving ...
-                    $main::FHEM_Hash->{STATE} = MMSOMFY::State::receiving;
-
-                    # ... if attribute shall be set ...
-                    if ($cmd eq "set" && $attrValue eq 1)
-                    {
-                        # ... state is changed to ignored.
-                        $main::FHEM_Hash->{STATE} = MMSOMFY::State::ignored;
-                    }
+                    # ... state is changed to ignored.
+                    $main::FHEM_Hash->{STATE} = MMSOMFY::State::ignored;
                 }
             }
         }
@@ -1402,7 +1398,7 @@ package MMSOMFY::Command;
             $normalizedString .= " ";
 
             # ... mark all commands without arguments as textField
-            # $normalizedString =~ s/((?<= )[^:]*?(?= ))/$1:textField/g;
+            $normalizedString =~ s/((?<= )[^:]*?(?= ))/$1:textField/g;
 
             # ... remove space at the end ...
             chop($normalizedString);
@@ -1463,7 +1459,7 @@ package MMSOMFY::Command;
                 (
                     # Commmand list depends on model
                     (
-                        # ... for remotes there are also no commands ...
+                        # ... for remotes there are no commands ...
                         ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} ne MMSOMFY::Model::remote) &&
                         (
                             (
@@ -1539,6 +1535,8 @@ package MMSOMFY::Command;
         my ($mode, $cmd, $cmdarg, @addargs) = @_;
         my $retval = undef;
         my $name = $main::FHEM_Hash->{NAME};
+
+        main::Log3($name, 5, "MMSOMFY::Command::Check ($name): $mode, $cmd, $cmdarg, @addargs");
 
         # ... create command list without arguments ...
         my $cmdListwoArg = MMSOMFY::Command::ToString("|", 1);
@@ -1826,7 +1824,7 @@ package MMSOMFY::Command;
 
 
     sub DispatchRemote($$) {
-        (my $Remote_FHEM_Hash, my $code) = @_;
+        (my $Remote_FHEM_Hash, my $command) = @_;
         main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($Remote_FHEM_Hash->{NAME}): Enter 'DispatchRemote'");
 
         my $rawdAttr = $main::attr{$Remote_FHEM_Hash->{NAME}}{MMSOMFY::Attribute::rawDevice} if (exists($main::attr{$Remote_FHEM_Hash->{NAME}}{MMSOMFY::Attribute::rawDevice}));
@@ -1852,11 +1850,15 @@ package MMSOMFY::Command;
                         main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Found remote MMSOMFY device '$rawhash->{NAME}'");
 
                         my $rawModel = $rawhash->{MMSOMFY::Internal::MODEL};
-                        my $cmd = $code2command{$rawModel}{$code};
+                        my $cmd = $code2command{$rawModel}{$command->{'command'}};
 
                         if ($cmd)
-                        {
+                        {                          
                             main::Log3($Remote_FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Send command '$cmd'.");
+
+                            main::readingsSingleUpdate($rawhash, MMSOMFY::Reading::enc_key, $command->{'enc_key'}, 1);
+                            main::readingsSingleUpdate($rawhash, MMSOMFY::Reading::rolling_code, $command->{'rolling_code'}, 1);
+
                             # add virtual as modifier to set command without calling send
                             my $ret = main::MMSOMFY_Set($rawhash, $rawhash->{NAME}, MMSOMFY::Mode::virtual, $cmd);
                             if ($ret)
@@ -1872,7 +1874,7 @@ package MMSOMFY::Command;
                         }
                         else
                         {
-                            main::Log3($Remote_FHEM_Hash->{NAME}, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Command code '$code' is not valid for remote device '$rawhash->{NAME}'");
+                            main::Log3($Remote_FHEM_Hash->{NAME}, 1, "MMSOMFY::Command::DispatchRemoteCommand ($Remote_FHEM_Hash->{NAME}): Command code '$cmd' is not valid for remote device '$rawhash->{NAME}'");
                         }
                     }
                 } else {
@@ -2706,10 +2708,12 @@ sub MMSOMFY_Parse($$) {
                         # update the state and log it
                         # Debug "MMSOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
                         Log3($Caller->{NAME}, 3, "MMSOMFY_Parse ($Caller->{NAME}): Command $command{'command_desc'}($command{'command'}) from remote $name($command{'address'})");
+                        readingsSingleUpdate($lh, MMSOMFY::Reading::enc_key, $command{'enc_key'}, 1);
+                        readingsSingleUpdate($lh, MMSOMFY::Reading::rolling_code, $command{'rolling_code'}, 1);
                         readingsSingleUpdate($lh, MMSOMFY::Reading::received, $command{'command'}, 1);
                         readingsSingleUpdate($lh, MMSOMFY::Reading::command, $command{'command_desc'}, 1);
 
-                        MMSOMFY::Command::DispatchRemote($lh, $command{'command'});
+                        MMSOMFY::Command::DispatchRemote($lh, \%command);
 
                         push(@list, $name);
                     }
@@ -2828,10 +2832,10 @@ sub MMSOMFY_Set($@) {
         }
         else
         {
-            # Store remaining arguments which as additional arguments ...
+            # Store remaining arguments as additional arguments ...
             @addargs = @args;
             @args = ();
-            Log3($name, 2, "MMSOMFY_Set ($name): More arguments found.\nRemaining arguments (" . join(", ", @args) . ") are for command extensions only.");
+            Log3($name, 2, "MMSOMFY_Set ($name): More arguments found.\nRemaining arguments (" . join(", ", @addargs) . ") are for command extensions only.");
         }
     }
 
