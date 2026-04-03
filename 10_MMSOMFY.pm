@@ -896,7 +896,7 @@ package MMSOMFY::Timing;
     
         my $retval = undef;
         
-        if ($hash->{TIMING} eq extended)
+        if ($hash->{MMSOMFY::Internal::TIMING} eq extended)
         {
             $retval = $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToClosed} - $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToDown};
         }
@@ -966,7 +966,7 @@ package MMSOMFY::Timing;
 
         my $retval = undef;
         
-        if ($hash->{TIMING} eq extended)
+        if ($hash->{MMSOMFY::Internal::TIMING} eq extended)
         {
             $retval = $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToDown};
         }
@@ -1212,7 +1212,7 @@ package MMSOMFY::Position;
 
     # Frame settings for postition calculation as percent values.
     # STARTPOS is used for opened and ENDPOS for closed.
-    # If different positions are needed they can be cerated by userReadings.
+    # If different positions are needed they can be created by userReadings.
     use constant {
         STARTPOS => 0,
         ENDPOS => 100,
@@ -1368,7 +1368,7 @@ package MMSOMFY::Command;
     my %code2command = (
         # Remotes doesn't support any commands but must decode them.
         MMSOMFY::Model::remote => {
-            "10" => "stop",       # stop or go my
+            "10" => "stop",        # stop or go my
             "20" => "up",          # go up
             "40" => "down",        # go down
             "80" => "prog",        # pairing or unpairing
@@ -1376,7 +1376,7 @@ package MMSOMFY::Command;
             "A0" => "wind_only_a", # wind only (flag)
         },
         MMSOMFY::Model::awning => {
-            "10" => "stop",       # stop or go my
+            "10" => "stop",        # stop or go my
             "20" => "open",        # go up
             "40" => "close",       # go down
             "80" => "prog",        # pairing or unpairing
@@ -1384,7 +1384,7 @@ package MMSOMFY::Command;
             "A0" => "wind_only_a", # wind only (flag)
         },
         MMSOMFY::Model::shutter => {
-            "10" => "stop",       # stop or go my
+            "10" => "stop",        # stop or go my
             "20" => "open",        # go up
             "40" => "close",       # go down
             "80" => "prog",        # pairing or unpairing
@@ -1828,9 +1828,9 @@ package MMSOMFY::Command;
             main::Log3($name, 4, "MMSOMFY::Command::Decode ($name): Preprocessing for SIGNALduino");
 
             my $encData = substr($msg, 2);
-            if (length($encData) >= 14)
+            if (length($encData) == 14 || length($encData) == 20)
             {
-                if ($encData =~ m/[0-9A-F]+/)
+                if ($encData =~ m/^[0-9A-F]+$/)
                 {
                     my $decData = RTS_Crypt("d", $name, $encData);
                     my $check = RTS_Check($name, $decData);
@@ -1847,13 +1847,13 @@ package MMSOMFY::Command;
                 }
                 else
                 {
-                    main::Log3($name, 1, "MMSOMFY::Command::Decode ($name): Error - Somfy RTS message is too short :$encData:");
+                    main::Log3($name, 1, "MMSOMFY::Command::Decode ($name): Error - Somfy RTS message has wrong format :$encData:");
                     $msg = undef;
                 }
             }
             else
             {
-                main::Log3($name, 1, "MMSOMFY::Command::Decode ($name): Error - Somfy RTS message has wrong format :$encData:");
+                main::Log3($name, 1, "MMSOMFY::Command::Decode ($name): Error - Somfy RTS message has wrong format (length must be 14 or 20):$encData:");
                 $msg = undef;
             }
         }
@@ -1864,20 +1864,22 @@ package MMSOMFY::Command;
             # YsAA2F18F00085E8
             if (substr($msg, 0, 2) ne "Yr" || substr($msg, 0, 2) ne "Yt")
             {
-                # Check for correct length
+                # Check for correct length 16 character
                 if (length($msg) == 16)
                 {
                     # Ys     AA         2          F          18F0        0085E8
                     #    | enc_key | command & checksum | rolling_code | address
+                    #    | 1 byte  |       1 byte       |   2 bytes    | 3 bytes
+                    # enc_key is byte 1
                     $retval{'enc_key'} = substr($msg, 2, 2);
-                    # command is higher nibble of byte 3
+                    # command is higher nibble of byte 2
                     $retval{'command'} = sprintf("%X", hex(substr($msg, 4, 2)) & 0xF0);
                     $retval{'command_desc'} = $code2command{MMSOMFY::Model::remote}{$retval{'command'}};
-                    # checksum is lower nibble of byte 3
+                    # checksum is lower nibble of byte 2
                     $retval{'checksum'} = sprintf("%X", hex(substr($msg, 4, 2)) & 0x0F);
-                    # rolling code
+                    # rolling code is byte 3 and 4
                     $retval{'rolling_code'} = substr($msg, 6, 4);
-                    # address needs bytes 14 and 16 swapped
+                    # address needs bytes 5 and 7 swapped
                     $retval{'address'} = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
                     main::Log3($name, 3, "MMSOMFY::Command::Decode ($name): address: $retval{'address'}");
                     main::Log3($name, 3, "MMSOMFY::Command::Decode ($name): command: $retval{'command_desc'}($retval{'command'})");
@@ -2025,7 +2027,7 @@ package MMSOMFY::Command;
         # DEBUG deactivated: main::IOWrite($main::FHEM_Hash, "Y", $message);
 
         # ... and log change.
-        main:Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::ChangeCULAttribute ($main::FHEM_Hash->{NAME}): Set $attribute to $value for $main::FHEM_Hash->{IODev}->{NAME}");
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::ChangeCULAttribute ($main::FHEM_Hash->{NAME}): Set $attribute to $value for $main::FHEM_Hash->{IODev}->{NAME}");
 
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command ($main::FHEM_Hash->{NAME}): Exit 'ChangeCULAttribute'");
     }
@@ -2191,7 +2193,7 @@ package MMSOMFY::DeviceModel;
     use Data::Dumper; # Todo remove debug
 
     use constant SimulationKey => "MovementSimulation";
-    use constant UpdateFrequency => 1;
+    use constant UpdateFrequency => 0.5;
 
     sub UpdateInterval($) {
         my $remainingTime = @_;
@@ -2399,14 +2401,56 @@ package MMSOMFY::DeviceModel;
                         delete $hash->{SimulationKey};
                         $movement = MMSOMFY::Movement::none;
                     }
-                    else
+                    elsif (defined($hash->{SimulationKey}))
                     {
                         main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $hash);
                     }
                 }
                 elsif ($hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
                 {
-                    # Implement extended timing
+                    my $closed2Down = MMSOMFY::Timing::Closed2Down($hash);
+                    my $down2Opened = MMSOMFY::Timing::Down2Opened($hash);
+                    
+                    # Extended timing positions: 0.0 (opened), 0.95 (down), 1.0 (closed)
+                    my $downFactor = 0.95;
+                    
+                    main::Log3($hash->{NAME}, 4, "MMSOMFY::DeviceModel ($hash->{NAME}): Extended timing open: StartFactor=$Simulation->{StartFactor}, downFactor=$downFactor, closed2Down=$closed2Down, down2Opened=$down2Opened");
+
+                    if ($Simulation->{StartFactor} > $downFactor)
+                    {
+                        # Phase 1: Move from StartFactor up to 0.95 (down position) using Closed2Down timing
+                        # Phase 2: Move from 0.95 to 0.0 (opened) using Down2Opened timing
+                        my $timeToDown = $closed2Down;
+                        my $totalTime = $closed2Down + $down2Opened;
+                        
+                        if ($dt < $timeToDown)
+                        {
+                            # Still in Phase 1: moving toward down position
+                            $factor = $Simulation->{StartFactor} - ($dt / $closed2Down) * ($Simulation->{StartFactor} - $downFactor);
+                        }
+                        else
+                        {
+                            # Phase 2: moving from down toward opened
+                            $factor = $downFactor - (($dt - $timeToDown) / $down2Opened) * $downFactor;
+                        }
+                    }
+                    else
+                    {
+                        # Start <= 0.95: Already at or below down position, move directly to opened (0.0) using Down2Opened timing
+                        $factor = $Simulation->{StartFactor} - ($dt / $down2Opened) * $Simulation->{StartFactor};
+                    }
+                    
+                    $factor = 0.0 if ($factor < 0.01);
+
+                    if ($factor eq 0.0 || $cancel > 0)
+                    {
+                        delete $hash->{SimulationKey};
+                        $movement = MMSOMFY::Movement::none;
+                    }
+                    elsif (defined($hash->{SimulationKey}))
+                    {
+                        main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $hash);
+                    }
                 }
             }
             elsif ($Simulation->{Command} eq MMSOMFY::Command::close)
@@ -2422,14 +2466,56 @@ package MMSOMFY::DeviceModel;
                         delete $hash->{SimulationKey};                        
                         $movement = MMSOMFY::Movement::none;
                     }
-                    else
+                    elsif (defined($hash->{SimulationKey}))
                     {
                         main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $hash);
                     }
                 }
                 elsif ($hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
                 {
-                    # Implement extended timing
+                    my $opened2Down = MMSOMFY::Timing::Opened2Down($hash);
+                    my $down2Closed = MMSOMFY::Timing::Down2Closed($hash);
+                    
+                    # Extended timing positions: 0.0 (opened), 0.95 (down), 1.0 (closed)
+                    my $downFactor = 0.95;
+                    
+                    main::Log3($hash->{NAME}, 4, "MMSOMFY::DeviceModel ($hash->{NAME}): Extended timing close: StartFactor=$Simulation->{StartFactor}, downFactor=$downFactor, opened2Down=$opened2Down, down2Closed=$down2Closed");
+
+                    if ($Simulation->{StartFactor} < $downFactor)
+                    {
+                        # Phase 1: Move from StartFactor up to 0.95 (down position) using Opened2Down timing
+                        # Phase 2: Move from 0.95 to 1.0 (closed) using Down2Closed timing
+                        my $timeToDown = $opened2Down;
+                        my $totalTime = $opened2Down + $down2Closed;
+                        
+                        if ($dt < $timeToDown)
+                        {
+                            # Still in Phase 1: moving toward down position
+                            $factor = $Simulation->{StartFactor} + ($dt / $opened2Down) * ($downFactor - $Simulation->{StartFactor});
+                        }
+                        else
+                        {
+                            # Phase 2: moving from down toward closed
+                            $factor = $downFactor + (($dt - $timeToDown) / $down2Closed) * (1.0 - $downFactor);
+                        }
+                    }
+                    else
+                    {
+                        # Start >= 0.95: Already at or above down position, move directly to closed (1.0) using Down2Closed timing
+                        $factor = $Simulation->{StartFactor} + ($dt / $down2Closed) * (1.0 - $Simulation->{StartFactor});
+                    }
+                    
+                    $factor = 1.0 if ($factor > 0.99);
+
+                    if ($factor eq 1.0 || $cancel > 0)
+                    {
+                        delete $hash->{SimulationKey};
+                        $movement = MMSOMFY::Movement::none;
+                    }
+                    elsif (defined($hash->{SimulationKey}))
+                    {
+                        main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $hash);
+                    }
                 }
             }
 
@@ -2485,7 +2571,7 @@ package MMSOMFY::DeviceModel;
                 main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Set state to ". MMSOMFY::State::opened);
                 $main::FHEM_Hash->{STATE} = MMSOMFY::State::opened;
             }
-            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic)
+            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic || $main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::extended)
             {
                 my $movement = main::ReadingsVal($main::FHEM_Hash->{NAME}, MMSOMFY::Reading::movement, undef);
                 my $factor = main::ReadingsVal($main::FHEM_Hash->{NAME}, MMSOMFY::Reading::factor, undef);
@@ -2494,8 +2580,15 @@ package MMSOMFY::DeviceModel;
                 {
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Ignore command '$cmd' as device is already going up or is already opened");
                 }
-                elsif ($movement eq MMSOMFY::Movement::none)
+                else
                 {
+                    if (defined($main::FHEM_Hash->{SimulationKey}))
+                    {
+                        main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Cancel simulation");
+                        main::RemoveInternalTimer($main::FHEM_Hash, "MMSOMFY::DeviceModel::TimerCallback");
+                        MMSOMFY::DeviceModel::TimerCallback($main::FHEM_Hash, 1);
+                    }
+
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Start moving up");
                     main::readingsSingleUpdate($main::FHEM_Hash, MMSOMFY::Reading::movement, MMSOMFY::Movement::up, 1);
 
@@ -2512,16 +2605,6 @@ package MMSOMFY::DeviceModel;
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Start timer for moving up");
                     main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $main::FHEM_Hash);
                 }
-                elsif ($movement eq MMSOMFY::Movement::down)
-                {
-                    # Opposite direction
-                    if (defined($main::FHEM_Hash->{SimulationKey}))
-                    {
-                        main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Cancel simulation");
-                        main::RemoveInternalTimer($main::FHEM_Hash, "MMSOMFY::DeviceModel::TimerCallback");
-                        MMSOMFY::DeviceModel::TimerCallback($main::FHEM_Hash, 1);
-                    }
-                }
             }
         }
         elsif ($cmd eq MMSOMFY::Command::close)
@@ -2531,7 +2614,7 @@ package MMSOMFY::DeviceModel;
                 main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Set state to ". MMSOMFY::State::closed);
                 $main::FHEM_Hash->{STATE} = MMSOMFY::State::closed;
             }
-            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic)
+            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic || $main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::extended)
             {
                 my $movement = main::ReadingsVal($main::FHEM_Hash->{NAME}, MMSOMFY::Reading::movement, undef);
                 my $factor = main::ReadingsVal($main::FHEM_Hash->{NAME}, MMSOMFY::Reading::factor, undef);
@@ -2540,8 +2623,15 @@ package MMSOMFY::DeviceModel;
                 {
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Ignore command '$cmd' as device is already going up or is already opened");
                 }
-                elsif ($movement eq MMSOMFY::Movement::none)
+                else
                 {
+                    if (defined($main::FHEM_Hash->{SimulationKey}))
+                    {
+                        main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Cancel simulation");
+                        main::RemoveInternalTimer($main::FHEM_Hash, "MMSOMFY::DeviceModel::TimerCallback");
+                        MMSOMFY::DeviceModel::TimerCallback($main::FHEM_Hash, 1);
+                    }
+
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Start moving down");
                     main::readingsSingleUpdate($main::FHEM_Hash, MMSOMFY::Reading::movement, MMSOMFY::Movement::down, 1);
 
@@ -2557,16 +2647,6 @@ package MMSOMFY::DeviceModel;
 
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Start timer for moving down");
                     main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $main::FHEM_Hash);
-                }
-                elsif ($movement eq MMSOMFY::Movement::up)
-                {
-                    # Opposite direction
-                    if (defined($main::FHEM_Hash->{SimulationKey}))
-                    {
-                        main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Cancel simulation");
-                        main::RemoveInternalTimer($main::FHEM_Hash, "MMSOMFY::DeviceModel::TimerCallback");
-                        MMSOMFY::DeviceModel::TimerCallback($main::FHEM_Hash, 1);
-                    }
                 }
             }
         }
@@ -2587,14 +2667,14 @@ package MMSOMFY::DeviceModel;
             {
                 main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Nothing to be done with command '$cmd' with timing '" . MMSOMFY::Timing::off . "'");
             }
-            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic)
+            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic || $main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::extended)
             {
-                    if (defined($main::FHEM_Hash->{SimulationKey}))
-                    {
-                        main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Cancel simulation");
-                        main::RemoveInternalTimer($main::FHEM_Hash, "MMSOMFY::DeviceModel::TimerCallback");
-                        MMSOMFY::DeviceModel::TimerCallback($main::FHEM_Hash, 1);
-                    }
+                if (defined($main::FHEM_Hash->{SimulationKey}))
+                {
+                    main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Cancel simulation");
+                    main::RemoveInternalTimer($main::FHEM_Hash, "MMSOMFY::DeviceModel::TimerCallback");
+                    MMSOMFY::DeviceModel::TimerCallback($main::FHEM_Hash, 1);
+                }
             }
         }
 
@@ -2603,7 +2683,7 @@ package MMSOMFY::DeviceModel;
 
     sub Calculate($$$)
     {
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'Update'");
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'Calculate'");
         my ($mode, $cmd, $cmdarg) = @_;
 
         my $model = $main::FHEM_Hash->{MMSOMFY::Internal::MODEL};
@@ -2630,7 +2710,7 @@ package MMSOMFY::DeviceModel;
             $cmdarg = undef;
         }
 
-        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'Update'");
+        main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'Calculate'");
         return ($cmd, $cmdarg)
     }
 
@@ -3080,573 +3160,326 @@ sub MMSOMFY_Set($@) {
     return $retval;
 } # end sub MMSOMFY_setFN
 ###############################
-
-##############################################################################
-##############################################################################
-##
-## Internal helper - not position related
-##
-##############################################################################
-##############################################################################
-
-######################################################
-######################################################
-###
-### Helper for set routine
-###
-######################################################
-######################################################
-
-###################################
-sub _MMSOMFY_Runden($) {
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_Runden ($FHEM_Hash->{NAME}): Enter");
-
-    # my ($v) = @_;
-    # if ( ( $v > 105 ) && ( $v < 195 ) ) {
-    #     $v = 150;
-    # } else {
-    #     $v = int(($v + 5) /10) * 10;
-    # }
-
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_Runden ($FHEM_Hash->{NAME}): Exit");
-    # return sprintf("%d", $v );
-} # end sub Runden
-
-
-###################################
-sub _MMSOMFY_Translate($) {
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_Translate ($FHEM_Hash->{NAME}): Enter");
-
-    # my ($v) = @_;
-
-    # if(exists($translations{$v})) {
-    #     $v = $translations{$v}
-    # }
-
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_Translate ($FHEM_Hash->{NAME}): Exit");
-    # return $v
-}
-
-###################################
-sub _MMSOMFY_Translate100To0($) {
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_Translate100To0 ($FHEM_Hash->{NAME}): Enter");
-
-    # my ($v) = @_;
-
-    # if(exists($translations100To0{$v})) {
-    #     $v = $translations100To0{$v}
-    # }
-
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_Translate100To0 ($FHEM_Hash->{NAME}): Exit");
-    # return $v
-}
-
-
-#############################
-sub _MMSOMFY_ConvertFrom100To0($) {
-#     Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_ConvertFrom100To0 ($FHEM_Hash->{NAME}): Enter");
-
-#     my ($v) = @_;
-
-#   return $v if ( ! defined($v) );
-#   return $v if ( length($v) == 0 );
-#   return $v if ( $v =~ /^(close|open)$/);
-
-#   $v = minNum( 100, maxNum( 0, $v ) );
-
-#     Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_ConvertFrom100To0 ($FHEM_Hash->{NAME}): Exit");
-#   return (( $v < 10 ) ? ( 200-($v*10.0) ) : ( (100-$v)*10.0/9 ));
-}
-
-#############################
-sub _MMSOMFY_ConvertTo100To0($) {
-#     Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_ConvertTo100To0 ($FHEM_Hash->{NAME}): Enter");
-
-#     my ($v) = @_;
-
-#   return $v if ( ! defined($v) );
-#   return $v if ( length($v) == 0 );
-
-#   $v = minNum( 200, maxNum( 0, $v ) );
-
-#     Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_ConvertTo100To0 ($FHEM_Hash->{NAME}): Exit");
-#   return ( $v > 100 ) ? ( (200-$v)/10.0 ) : ( 100-(9*$v/10.0) );
-}
-
-###################################
-# calulates the position depending on moving direction ($move), last position ($pos) and time since starting move ($dt)
-# For calculation the timings are used if defined.
-sub _MMSOMFY_CalcCurrentPos($$$) {
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_CalcCurrentPos ($FHEM_Hash->{NAME}): Enter");
-
-    # my ($move, $pos, $dt) = @_;
-
-    # my $name = $FHEM_Hash->{NAME};
-    # my $newPos = $pos;
-
-    # # If there are no timings position can not be calculated and remain set statically.
-    # if ($FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::off)
-    # {
-    #     Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Position set statically as no timings are defined.");
-    # }
-    # # ... else if basic timing settings are available ...
-    # elsif ($FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::basic)
-    # {
-    #     Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Basic Timing is defiend. No down position.");
-
-    #     # if movement is close ...
-    #     if ($move eq MMSOMFY::Movement::down)
-    #     {
-    #         # ... movement will be added to last position.
-    #         $newPos = $pos + MMSOMFY::Position::dPosForTime(MMSOMFY::Position::RANGE, MMSOMFY::Timing::Opened2Closed, $dt);
-    #     }
-    #     # ... else if movement is up ...
-    #     elsif ($move eq MMSOMFY::Movement::up)
-    #     {
-    #         # ... movement wil be substracted from last position.
-    #         $newPos = $pos - MMSOMFY::Position::dPosForTime(MMSOMFY::Position::RANGE, MMSOMFY::Timing::Closed2Opened, $dt);
-    #     }
-    #     # ... else use last position and report error.
-    #     else
-    #     {
-    #         Log3($name,1,"_MMSOMFY_CalcCurrentPos ($name): $name wrong move: $move");
-    #         $newPos = $pos;
-    #     }
-    # }
-    # # ... else if extended timings are set, split ranges on down barrier.
-    # elsif ($FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
-    # {
-    #     Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Separate down position. Splitting ranges if necessray.");
-
-    #     # ... get all relevant positions and ranges.
-    #     my $posOpened = MMSOMFY::Position::FromState(MMSOMFY::State::opened);
-    #     my $posDown = MMSOMFY::Position::FromState(MMSOMFY::State::down);
-    #     my $posClosed = MMSOMFY::Position::FromState(MMSOMFY::State::closed);
-    #     my $rOpenedDown = MMSOMFY::Position::diffPosition($posOpened, $posDown);
-    #     my $rDownClosed = MMSOMFY::Position::diffPosition($posDown, $posClosed);
-
-    #     # if movement is close ...
-    #     if ($move eq MMSOMFY::Movement::down)
-    #     {
-    #         Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Movement is closing.");
-
-    #         # ... if current position is between down and closed ...
-    #         if (MMSOMFY::Position::IsPosBetween($pos, MMSOMFY::State::down, MMSOMFY::State::closed))
-    #         {
-    #             Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Between down and closed. Add movement to position.");
-
-    #             # ... add movement to last position with timing 'Down2Closed' related to range.
-    #             $newPos = $pos + MMSOMFY::Position::dPosForTime($rDownClosed, MMSOMFY::Timing::Down2Closed, $dt);
-    #         }
-    #         # ... else current position is between opened and down ...
-    #         else
-    #         {
-    #             # ... get movement with timing Opened2Down related to range.
-    #             my $dPos = MMSOMFY::Position::dPosForTime($rOpenedDown, MMSOMFY::Timing::Opened2Down, $dt);
-
-    #             Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Between opened and down, moving $dPos.");
-
-    #             # If newPos would breach down barrier calculation must be corrected ...
-    #             if (MMSOMFY::Position::IsPosBetween($pos + $dPos, MMSOMFY::State::down, MMSOMFY::State::closed))
-    #             {
-    #                 Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Movement crosses down barrier. Correction needed.");
-
-    #                 # Get traveltime beyond down barrier, ...
-    #                 my $moveBeyondDown = $pos + $dPos - $posDown;
-    #                 my $tBeyondDown = $dt * $moveBeyondDown / $dPos;
-
-    #                 # ... calculate movement beyond down with timing Down2Closed related to range.
-    #                 $dPos = MMSOMFY::Position::dPosForTime($rDownClosed, MMSOMFY::Timing::Down2Closed, $tBeyondDown);
-
-    #                 # ... add movement beyond down to down position for new position.
-    #                 $newPos = $posDown + $dPos;
-    #             }
-    #             # ... not breaking the down barrier calculation is already correct ...
-    #             else
-    #             {
-    #                 Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Movement before down barrier.");
-
-    #                 # ... and new position can be set accordingly.
-    #                 $newPos = $pos + $dPos;
-    #             }
-    #         }
-    #     }
-    #     elsif ($move eq MMSOMFY::Movement::up)
-    #     {
-    #         Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Movement is up.");
-
-    #         # ... if current position is between down and opened ...
-    #         if (MMSOMFY::Position::IsPosBetween($pos, MMSOMFY::State::down, MMSOMFY::State::opened))
-    #         {
-    #             Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Between down and opened. Remvove movement from position.");
-
-    #             # ... remove movement to last position with timing 'Down2Opened' related to range.
-    #             $newPos = $pos - MMSOMFY::Position::dPosForTime($rOpenedDown, MMSOMFY::Timing::Down2Opened, $dt);
-    #         }
-    #         # ... else current position is between closed and down ...
-    #         else
-    #         {
-    #             # ... get movement with timing Closed2Down related to range.
-    #             my $dPos = MMSOMFY::Position::dPosForTime($rDownClosed, MMSOMFY::Timing::Closed2Down, $dt);
-
-    #             Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Between closed and down, moving $dPos.");
-
-    #             # If newPos would breach down barrier, calculation must be corrected ...
-    #             if (MMSOMFY::Position::IsPosBetween($pos - $dPos, MMSOMFY::State::down, MMSOMFY::State::opened))
-    #             {
-    #                 Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Movement crosses down barrier. Correction needed.");
-
-    #                 # Get traveltime beyond down barrier, ....
-    #                 my $moveBeyondDown = $posDown - ($pos - $dPos);
-    #                 my $tBeyondDown = $dt * $moveBeyondDown / $dPos;
-
-    #                 # ... calculate movement beyond down with timing 'Down2Opened' related to range.
-    #                 $dPos = MMSOMFY::Position::dPosForTime($rOpenedDown, MMSOMFY::Timing::Down2Opened, $tBeyondDown);
-
-    #                 # ... remove movement beyond down from down position for new position.
-    #                 $newPos = $posDown - $dPos;
-    #             }
-    #             # ... not breaking the down barrier calculation is already correct ...
-    #             else
-    #             {
-    #                 Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Movement before down barrier.");
-
-    #                 # ... and new position can be set accordingly.
-    #                 $newPos = $pos - $dPos;
-    #             }
-    #         }
-    #     } else {
-    #         Log3($name,1,"_MMSOMFY_CalcCurrentPos: $name wrong move $move");
-    #     }
-    # }
-
-    # # Bring back in range if exeeded.
-    # $newPos = MMSOMFY::Position::MaxPos if $newPos > MMSOMFY::Position::MaxPos;
-    # $newPos = MMSOMFY::Position::MinPos if $newPos < MMSOMFY::Position::MinPos;
-
-    # Log3($name, 4, "_MMSOMFY_CalcCurrentPos ($name): Updated position: $newPos");
-
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_CalcCurrentPos ($FHEM_Hash->{NAME}): Exit");
-    # return $newPos;
-}
-
-
-######################################################
-######################################################
-###
-### Helper for TIMING
-###
-######################################################
-######################################################
-
-
-
-#############################
-sub _MMSOMFY_UpdateStartTime() {
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_UpdateStartTime ($FHEM_Hash->{NAME}): Enter");
-
-    # my ($s, $ms) = gettimeofday();
-
-    # my $t = $s + ($ms / 1000000); # 10 msec
-    # my $t1 = 0;
-    # $t1 = $FHEM_Hash->{starttime} if(exists($FHEM_Hash->{starttime} ));
-    # $FHEM_Hash->{starttime}  = $t;
-    # my $dt = sprintf("%.2f", $t - $t1);
-
-    # Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_UpdateStartTime ($FHEM_Hash->{NAME}): Exit");
-    # return $dt;
-} # end sub UpdateStartTime
-
-
-###################################
-sub _MMSOMFY_TimedUpdate($) {
-#     Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_TimedUpdate ($FHEM_Hash->{NAME}): Enter");
-
-#     my ($FHEM_Hash) = @_;
-
-#     Log3($FHEM_Hash->{NAME},4,"_MMSOMFY_TimedUpdate");
-
-#     # get current infos
-#     my $pos = ReadingsVal($FHEM_Hash->{NAME},'exact',undef);
-
-#   if ( AttrVal( $FHEM_Hash->{NAME}, "positionInverse", 0 ) ) {
-#     Log3($FHEM_Hash->{NAME},5,"_MMSOMFY_TimedUpdate : pos before convert so far : $pos");
-#     $pos = _MMSOMFY_ConvertFrom100To0( $pos );
-#   }
-#     Log3($FHEM_Hash->{NAME},5,"_MMSOMFY_TimedUpdate : pos so far : $pos");
-
-#     my $dt = _MMSOMFY_UpdateStartTime();
-#   my $nowt = gettimeofday();
-
-#     $pos = _MMSOMFY_CalcCurrentPos($FHEM_Hash->{MOVE}, $pos, $dt);
-# #   my $posRounded = RoundInternal( $pos );
-
-#     Log3($FHEM_Hash->{NAME},5,"_MMSOMFY_TimedUpdate : delta time : $dt   new rounde pos (rounded): $pos ");
-
-#     $FHEM_Hash->{runningtime} = $FHEM_Hash->{runningtime} - $dt;
-#     if ( $FHEM_Hash->{runningtime} <= 0.1) {
-#         if ( defined( $FHEM_Hash->{runningcmd} ) ) {
-#             _MMSOMFY_SendCommand($FHEM_Hash, $FHEM_Hash->{runningcmd});
-#         }
-#         # trigger update from timer
-#         MMSOMFY::Reading::Update($FHEM_Hash->{updateState}, 'stop');
-#         delete $FHEM_Hash->{updatestate};
-#         delete $FHEM_Hash->{starttime};
-#         delete $FHEM_Hash->{runningtime};
-#         delete $FHEM_Hash->{runningcmd};
-#     } else {
-#         my $utime = $FHEM_Hash->{runningtime} ;
-#         if($utime > $somfy_updateFreq) {
-#             $utime = $somfy_updateFreq;
-#         }
-#         MMSOMFY::Reading::Update($pos, $FHEM_Hash->{MOVE});
-#         if ( defined( $FHEM_Hash->{runningcmd} )) {
-#             Log3($FHEM_Hash->{NAME},4,"_MMSOMFY_TimedUpdate: $FHEM_Hash->{NAME} -> stopping in $FHEM_Hash->{runningtime} sec");
-#         } else {
-#             Log3($FHEM_Hash->{NAME},4,"_MMSOMFY_TimedUpdate: $FHEM_Hash->{NAME} -> update state in $FHEM_Hash->{runningtime} sec");
-#         }
-#         my $nstt = maxNum($nowt+$utime-0.01, gettimeofday()+.1 );
-#         Log3($FHEM_Hash->{NAME},5,"_MMSOMFY_TimedUpdate: $FHEM_Hash->{NAME} -> next time to stop: $nstt");
-#         InternalTimer($nstt,"_MMSOMFY_TimedUpdate",$FHEM_Hash,0);
-#     }
-
-#     Log3($FHEM_Hash->{NAME}, 4, "_MMSOMFY_TimedUpdate ($FHEM_Hash->{NAME}): Exit");
-} # end sub TimedUpdate
-
-######################################################
-######################################################
-######################################################
-
 1;
 
 
 =pod
-=item summary    supporting devices using the SOMFY RTS protocol - window shades
-=item summary_DE für Geräte, die das SOMFY RTS protocol unterstützen - Rolläden
+=item summary    supporting devices using the SOMFY RTS protocol - window shades, shutters, remote controls and switches
+=item summary_DE für Geräte, die das SOMFY RTS protocol unterstützen - Rolläden, Rolladen, Fernbedienungen und Schalter
 =begin html
 
 <a name="MMSOMFY"></a>
-<h3>MMSOMFY - Somfy RTS / Simu Hz protocol</h3>
+<h3>MMSOMFY - Somfy RTS / Simu Hz protocol implementation</h3>
 <ul>
-  The Somfy RTS (identical to Simu Hz) protocol is used by a wide range of devices,
-  which are either senders or receivers/actuators.
-  Right now only SENDING of Somfy commands is implemented in the CULFW, so this module currently only
-  supports devices like awning, dimmers, etc. through a <a href="#CUL">CUL</a> device (which must be defined first).
-  Reception of Somfy remotes is only supported indirectly through the usage of an FHEMduino
-  <a href="http://www.fhemwiki.de/wiki/FHEMduino">http://www.fhemwiki.de/wiki/FHEMduino</a>
-  which can then be used to connect to the MMSOMFY device.
-
+  The Somfy RTS (identical to Simu Hz) protocol is used by a wide range of devices such as awnings,
+  roller shutters, blinds and wall switches. This module supports SENDING commands to Somfy RTS devices 
+  through a <a href="#CUL">CUL</a> device (which must be defined first and set as IODev).
+  <br><br>
+  
+  The module provides position tracking for movable devices (awnings, shutters) with optional timing-based 
+  position calculation. Multiple devices can be controlled independently, each with a unique address.
+  <br><br>
+  
+  <b>Note:</b> This module is still under development. Not all features may be fully implemented.
   <br><br>
 
   <a name="MMSOMFYdefine"></a>
   <b>Define</b>
   <ul>
-    <code>define &lt;name&gt; MMSOMFY &lt;address&gt; [&lt;encryption-key&gt;] [&lt;rolling-code&gt;] </code>
+    <code>define &lt;name&gt; MMSOMFY &lt;address&gt; &lt;model&gt; [&lt;encryption-key&gt;] [&lt;rolling-code&gt;]</code>
     <br><br>
 
-   The address is a 6-digit hex code, that uniquely identifies a single remote control channel.
-   It is used to pair the remote to the awning or dimmer it should control.
+   The address is a unique 6-digit hexadecimal code that identifies this device as a remote control channel 
+   for pairing with Somfy RTS receivers.
    <br>
-   Pairing is done by setting the awning in programming mode, either by disconnecting/reconnecting the power,
-   or by pressing the program button on an already associated remote.
-   <br>
-   Once the awning is in programming mode, send the "prog" command from within FHEM to complete the pairing.
-   The awning will move up and down shortly to indicate completion.
-   <br>
-   You are now able to control this awning from FHEM, the receiver thinks it is just another remote control.
+   <b>Pairing Process:</b> Set the receiver in programming mode (usually by pressing the program button 
+   on an existing remote or disconnecting/reconnecting power), then send the "prog" command from FHEM. 
+   The receiver will acknowledge with a brief movement.
+   <br><br>
 
    <ul>
-   <li><code>&lt;address&gt;</code> is a 6 digit hex number that uniquely identifies FHEM as a new remote control channel.
-   <br>You should use a different one for each device definition, and group them using a structure.
-   </li>
-   <li>The optional <code>&lt;encryption-key&gt;</code> is a 2 digit hex number (first letter should always be A)
-   that can be set to clone an existing remote control channel.</li>
-   <li>The optional <code>&lt;rolling-code&gt;</code> is a 4 digit hex number that can be set
-   to clone an existing remote control channel.<br>
-   If you set one of them, you need to pick the same address as an existing remote.
-   Be aware that the receiver might not accept commands from the remote any longer,<br>
-   if you used FHEM to clone an existing remote.
-   <br>
-   This is because the code is original remote's codes are out of sync.</li>
-   <br>
-   Rolling code and encryption key in the device definition will be always updated on commands sent and can be also changed manually by modifying the original definition (e.g in FHEMWeb - modify).
+   <li><code>&lt;address&gt;</code>: A 6-digit hexadecimal number (0-9, A-F) that uniquely identifies 
+   this FHEM device as a remote control channel. Use different addresses for each device definition. 
+   Example: <code>000001</code>, <code>42ABCD</code>
+   </li><br>
+
+   <li><code>&lt;model&gt;</code>: The device model type. Valid values are:
+   <ul>
+     <li><code>awning</code> - WindowShade, Markise, Rollladen with up/down movement</li>
+     <li><code>shutter</code> - Roller shutter with extended timing (0=open, 95=down position where slats meet frame, 100=closed)</li>
+     <li><code>switch</code> - Simple switch supporting on/off commands</li>
+     <li><code>remote</code> - Remote control (receiver only, no sending)</li>
+   </ul>
+   </li><br>
+
+   <li><code>&lt;encryption-key&gt;</code> (optional): A 2-digit hexadecimal encryption key used for 
+   cloning an existing remote control. The first character is typically 'A'. If specified, you must also 
+   provide a matching <code>&lt;rolling-code&gt;</code> and <code>&lt;address&gt;</code> from the original remote.
+   </li><br>
+
+   <li><code>&lt;rolling-code&gt;</code> (optional): A 4-digit hexadecimal rolling code counter for synchronization 
+   with the receiver. Used when cloning existing remotes. Both encryption key and rolling code will be 
+   automatically updated after each command sent to the device (RTS protocol behavior).
+   </li><br>
    </ul>
    <br>
 
-    Examples:
-    <ul>
-      <code>define rollo_1 MMSOMFY 000001</code><br>
-      <code>define rollo_2 MMSOMFY 000002</code><br>
-      <code>define rollo_3_original MMSOMFY 42ABCD A5 0A1C</code><br>
-    </ul>
+   <b>Examples:</b>
+   <ul>
+      <code>define myAwning MMSOMFY 000001 awning</code><br>
+      <code>define myShutter MMSOMFY 000002 shutter</code><br>
+      <code>define mySwitch MMSOMFY 000003 switch</code><br>
+      <code>define clonedRemote MMSOMFY 42ABCD awning A5 0A1C</code><br>
+   </ul>
   </ul>
   <br>
 
   <a name="MMSOMFYset"></a>
-  <b>Set </b>
+  <b>Set</b>
   <ul>
-    <code>set &lt;name&gt; &lt;value&gt; [&lt;time&gt]</code>
+    <code>set &lt;name&gt; &lt;command&gt; [&lt;parameter&gt;]</code>
     <br><br>
-    where <code>value</code> is one of:<br>
+    
+    <b>Common Commands (all models):</b><br>
     <pre>
-    close
-    open
-    go-my
-    stop
-    position value (0..100) # see note
-    prog  # Special, see note
-    wind_sun_9
-    wind_only_a
-    close_for_timer
-    open_for_timer
-    manual 0,...,100,200,close,open
+    stop              Stop the current movement
+    prog              Pair/unpair the device with the receiver
     </pre>
-    Examples:
+    
+    <b>Awning / Shutter Commands:</b><br>
+    <pre>
+    open              Move fully upward (position 0)
+    close             Move fully downward (position 100 or 200)
+    go_my             Move to the "My" position (user-defined favorite)
+    position &lt;0-100&gt; Move to a specific position (requires timing attributes)
+    manual &lt;value&gt;   Set position without sending RF command (for position correction)
+    close_for_timer   Close (down) with automatic stop after timing period
+    open_for_timer    Open (up) with automatic stop after timing period
+    </pre>
+
+    <b>Switch Commands:</b><br>
+    <pre>
+    on                Activate switch (moves fully down)
+    off               Deactivate switch (moves fully up)
+    </pre>
+
+    <b>Remote / Special Commands:</b><br>
+    <pre>
+    wind_sun_9        Send wind/sun detector code (sun + flag)
+    wind_only_a       Send wind-only detector code (flag only)
+    z_custom          Send custom RF code (advanced usage)
+    </pre>
+
+    <b>SetExtensions (if eventMap/webCmd configured):</b><br>
+    <pre>
+    on-for-timer &lt;seconds&gt;   Switch on with automatic off after delay
+    off-for-timer &lt;seconds&gt;  Switch off with automatic on after delay
+    on-till &lt;HH:MM:SS&gt;       Switch on until specified time
+    off-till &lt;HH:MM:SS&gt;      Switch off until specified time
+    toggle                    Toggle between on and off states
+    </pre>
+
+    <b>Examples:</b>
     <ul>
-      <code>set rollo_1 close</code><br>
-      <code>set rollo_1,rollo_2,rollo_3 on</code><br>
-      <code>set rollo_1-rollo_3 on</code><br>
-      <code>set rollo_1 open</code><br>
-      <code>set rollo_1 position 50</code><br>
+      <code>set myAwning open</code><br>
+      <code>set myAwning close</code><br>
+      <code>set myAwning position 50</code><br>
+      <code>set myAwning stop</code><br>
+      <code>set myAwning prog</code> (for pairing)<br>
+      <code>set mySwitch on</code><br>
+      <code>set myAwning,myShutter open</code> (multiple devices)<br>
     </ul>
     <br>
-    Notes:
+    <b>Position-based Commands Notes:</b>
     <ul>
-      <li>prog is a special command used to pair the receiver to FHEM:
-      Set the receiver in programming mode (eg. by pressing the program-button on the original remote)
-      and send the "prog" command from FHEM to finish pairing.<br>
-      The awning will move up and down shortly to indicate success.
-      </li>
-      <li>close_for_timer and open_for_timer send a stop command after the specified time,
-      instead of reversing the awning.<br>
-      This can be used to go to a specific position by measuring the time it takes to close the awning completely.
-      </li>
-      <li>position value<br>
-
-            The position is variying between 0 completely open and 100 for covering the full window.
-            The position must be between 0 and 100 and the appropriate
-            attributes driveTimeOpenedToDown, driveTimOpenedToClose,
-            driveTimeClosedToDown and driveTimeClosedToOpened must be set. See also positionInverse attribute.<br>
-            </li>
-      <li>wind_sun_9 and wind_only_a send special commands to the Somfy device that to represent the codes sent from wind and sun detector (with the respective code contained in the set command name)
-      </li>
-      <li>manual will only set the position without sending any commands to the somfy device - can be used to correct the position manually
-      </li>
+      <li>Position commands (0..100) require the timing attributes to be set. 
+      The device calculates movement duration based on configured drive times.</li>
+      <li>The <code>manual</code> command updates the position reading without sending 
+      RF signals - useful for position correction after manual operations.</li>
+      <li><code>close_for_timer</code> and <code>open_for_timer</code> stop movement after a 
+      specified duration instead of reaching a target position.</li>
+      <li>For extended position range (shutter model): 0=open, 100=down position, 200=completely closed</li>
+      <li>Position values are rounded to nearest 5% increment.</li>
     </ul>
-
-        The position reading distinuishes between multiple cases
-    <ul>
-      <li>Without timing values (see attributes) set only generic values are used for status and position: <pre>open, closed, moving</pre> are used
-      </li>
-            <li>With timing values set but driveTimeOpenedToClose equal to driveTimeOpenedToDown and driveTimeClosedToDown equal 0
-            the device is considered to only vary between 0 and 100 (100 being completely closed)
-      </li>
-            <li>With full timing values set the device is considerd a window shutter (Rolladen) with a difference between
-            covering the full window (position 100) and being completely closed (position 200)
-      </li>
-        </ul>
 
   </ul>
   <br>
 
-  <b>Get</b> <ul>N/A</ul><br>
+  <b>Get</b>
+  <ul>
+    Currently no Get commands are supported. Device state and position are provided as readings.
+  </ul>
+  <br>
 
   <a name="MMSOMFYattr"></a>
   <b>Attributes</b>
   <ul>
-    <li>IODev<br>
-        Set the IO or physical device which should be used for sending signals
-        for this "logical" device. An example for the physical device is a CUL.<br>
-        Note: The IODev has to be set, otherwise no commands will be sent!<br>
-        If you have both a CUL868 and CUL433, use the CUL433 as IODev for increased range.
-        </li><br>
+    <li><b>IODev</b><br>
+        Specifies the physical IO device (e.g., a <a href="#CUL">CUL</a> device) through which 
+        RF commands are transmitted. <b>REQUIRED:</b> The IODev must be defined and set, 
+        otherwise no commands will be sent to the Somfy device!<br>
+        If available, use CUL433 for better range with 433 MHz devices.
+        <br><br>
+    </li>
 
-    <li>positionInverse<br>
-        Inverse operation for positions instead of 0 to 100-200 the positions are ranging from 100 to 10 (down) and then to 0 (closed).
-        The position set command will point in this case to the reversed position values.
-        This does NOT reverse the operation of the on/open command, meaning that on always will move the shade down and open will move it up towards the initial position.
-        </li><br>
+    <li><b>positionInverse</b> (0 or 1, default: 0)<br>
+        Inverts position values. When enabled: 0=closed, 100=down, 200=open (opposite of normal).
+        The position set command will use reversed values accordingly.
+        <b>Note:</b> This does NOT invert the direction of on/open/close commands - they always 
+        move in the same logical direction.
+        <br><br>
+    </li>
 
-    <li>additionalPosReading<br>
-        Position of the shutter will be stored in the reading <code>pos</code> as numeric value.
-        Additionally this attribute might specify a name for an additional reading to be updated with the same value than the pos.
-        </li><br>
+    <li><b>driveTimeOpenedToDown</b> (seconds, e.g. "12" or "12.5")<br>
+        Time in seconds the shutter needs to move from fully open (position 0) down to 
+        the "down" position (position 100). For a typical window, this is about 12-15 seconds.
+        At least this attribute must be set to enable position tracking.
+        <br><br>
+    </li>
 
-    <li>fixedEnckey 1|0<br>
-        If set to 1 the enc-key is not changed after a command sent to the device. Default is value 0 meaning enc-key is changed normally for the RTS protocol.
-        </li><br>
+    <li><b>driveTimeOpenedToClosed</b> (seconds)<br>
+        Time in seconds to move from fully open (position 0) to completely closed (position 200).
+        This value must be greater than <code>driveTimeOpenedToDown</code>.
+        Typically 3-5 seconds more than the down time. Only used for extended position models (shutter).
+        <br><br>
+    </li>
 
-    <li>eventMap<br>
-        Replace event names and set arguments. The value of this attribute
-        consists of a list of space separated values, each value is a colon
-        separated pair. The first part specifies the "old" value, the second
-        the new/desired value. If the first character is slash(/) or comma(,)
-        then split not by space but by this character, enabling to embed spaces.
-        Examples:<ul><code>
-        attr store eventMap on:open off:closed<br>
-        attr store eventMap /on_for_timer 10:open/off:closed/<br>
-        set store open
-        </code></ul>
-        </li><br>
+    <li><b>driveTimeClosedToDown</b> (seconds)<br>
+        Time in seconds to move from completely closed (position 200) up to the "down" position (position 100).
+        Usually 3-5 seconds. Only used for extended position models (shutter).
+        <br><br>
+    </li>
 
-    <li><a href="#loglevel">loglevel</a></li><br>
+    <li><b>driveTimeClosedToOpened</b> (seconds)<br>
+        Time in seconds to move from completely closed (position 200) all the way up to 
+        fully open (position 0). This value must be greater than <code>driveTimeOpenedToDown</code>.
+        Typically slightly higher than <code>driveTimeOpenedToClosed</code> due to device weight.
+        <br><br>
+    </li>
 
-    <li><a href="#showtime">showtime</a></li><br>
+    <li><b>myPosition</b> (0..200 or 0..100)<br>
+        The target position for the "go_my" (favorite/memory) command. 
+        When the device receives a "go_my" command, it will move to this position.
+        Default is typically 95 (partially closed).
+        <br><br>
+    </li>
 
-    <li>model<br>
-        The model attribute denotes the model type of the device.
-        The attributes will (currently) not be used by the fhem.pl directly.
-        It can be used by e.g. external programs or web interfaces to
-        distinguish classes of devices and send the appropriate commands
-        (e.g. "on" or "off" to a switch, "dim..%" to dimmers etc.).<br>
-        The spelling of the model names are as quoted on the printed
-        documentation which comes which each device. This name is used
-        without blanks in all lower-case letters. Valid characters should be
-        <code>a-z 0-9</code> and <code>-</code> (dash),
-        other characters should be ommited.<br>
-        Here is a list of "official" devices:<br>
-          <b>Receiver/Actor</b>: somfyawning<br>
-    </li><br>
+    <li><b>symbolLength</b> (microseconds, default: 1240)<br>
+        The RF symbol width in microseconds for the Somfy RTS protocol transmission.
+        Should not normally be changed unless working with non-standard hardware.
+        <br><br>
+    </li>
 
+    <li><b>repetition</b> (0..255, default: 6)<br>
+        Number of times each RF command is repeated in the transmission. 
+        Higher values improve reception reliability for distant devices but increase 
+        transmission time. Standard Somfy devices expect value 6.
+        <br><br>
+    </li>
 
-    <li>ignore<br>
-        Ignore this device, e.g. if it belongs to your neighbour. The device
-        won't trigger any FileLogs/notifys, issued commands will silently
-        ignored (no RF signal will be sent out, just like for the <a
-        href="#attrdummy">dummy</a> attribute). The device won't appear in the
-        list command (only if it is explicitely asked for it), nor will it
-        appear in commands which use some wildcard/attribute as name specifiers
-        (see <a href="#devspec">devspec</a>). You still get them with the
-        "ignored=1" special devspec.
-        </li><br>
+    <li><b>fixedEnckey</b> (0 or 1, default: 0)<br>
+        When set to 1, the encryption key does not change after each command.
+        Set to 0 (default) for standard RTS protocol behavior where the encryption key 
+        is updated with each transmission for security.
+        <br><br>
+    </li>
 
-    <li>driveTimOpenedToDown<br>
-        The time the awning needs to drive down from "open" (pos 0) to pos 100.<br>
-        In this position, the lower edge touches the window frame, but it is not completely shut.<br>
-        For a mid-size window this time is about 12 to 15 seconds.
-        </li><br>
+    <li><b>ignore</b> (0 or 1)<br>
+        Ignore this device. It will not trigger FileLogs or notifications, and issued 
+        commands will be silently discarded without sending RF signals.
+        <br><br>
+    </li>
 
-    <li>driveTimOpenedToClose<br>
-        The time the awning needs to drive down from "open" (pos 0) to "close", the end position of the awning.<br>
-        Note: If set, this value always needs to be higher than driveTimeOpenedToDown
-        This is about 3 to 5 seonds more than the "driveTimeOPenedToDown" value.
-        </li><br>
+    <li><b>disable</b> (0 or 1)<br>
+        Disable this device without deleting it. The device won't respond to commands.
+        <br><br>
+    </li>
 
-    <li>driveTimeClosedToDown<br>
-        The time the awning needs to drive up from "closed" (endposition) to "down".<br>
-        This usually takes about 3 to 5 seconds.
-        </li><br>
+    <li><b>eventMap</b><br>
+        Replace set command names and reading values. Format: space-separated list of 
+        <code>old:new</code> pairs. Alternative separators (use first character of value):
+        <ul>
+          <code>attr myAwning eventMap open:up closed:down</code><br>
+          <code>attr myAwning eventMap /on_for_timer 10:openWindow/off:closeWindow/</code>
+        </ul>
+        This allows custom command names or integration with web interfaces.
+        <br><br>
+    </li>
 
-    <li>driveTimeClosedToOpened<br>
-        The time the awning needs drive up from "closed" (endposition) to "opened" (upper endposition).<br>
-        Note: If set, this value always needs to be higher than driveTimeOpenedToDown
-        This value is usually a bit higher than "driveTimeOPenedToClose", due to the awning's weight.
-        </li><br>
+    <li><b>webCmd</b><br>
+        Comma-separated list of commands to display as buttons in web interface.
+        Example: <code>attr myAwning webCmd open,stop,close</code>
+        <br><br>
+    </li>
+
+    <li><b>stateFormat</b><br>
+        Control how the STATE reading is displayed. Default shows position and state.
+        Example: <code>attr myAwning stateFormat position</code>
+        <br><br>
+    </li>
+
+    <li><b>devStateIcon</b><br>
+        Define custom state icons for web interface display.
+        Example: <code>attr myAwning devStateIcon opened:.*@:off closed:.*@:on</code>
+        <br><br>
+    </li>
+
+    <li><b>rawDevice</b><br>
+        For advanced users: define the raw RF device used for receiving/monitoring.
+        <br><br>
+    </li>
+
+    <li><a href="#loglevel">loglevel</a><br>
+        Set logging level (0-5). Higher values produce more detailed log output for debugging.
+        <br><br>
+    </li>
 
   </ul>
+  <br>
+
+  <a name="MMSOMFYreadings"></a>
+  <b>Readings</b><br>
+  <ul>
+    The module maintains the following readings:
+    <ul>
+      <li><b>state</b> - Current state: "open", "closed", "stopped", or position value (0-100)</li>
+      <li><b>position</b> - Numeric position value (0=open, 95=down position, 100=closed for shutters)</li>
+      <li><b>moving</b> - Current movement direction: "none", "up", or "down"</li>
+      <li><b>lastCommand</b> - Last command sent to the device</li>
+      <li><b>rollingCode</b> - Current RTS rolling code counter</li>
+    </ul>
+  </ul>
+  <br>
+
+  <a name="MMSOMFYnotes"></a>
+  <b>Implementation Notes</b><br>
+  <ul>
+    <li><b>Position Calculation:</b> Position is calculated based on elapsed time and configured drive times.
+    For accurate position tracking, drive time attributes must be set correctly for each device.</li>
+    
+    <li><b>Timing Modes:</b>
+      <ul>
+        <li><b>No timing attributes:</b> Only generic states (open, closed, moving) are used</li>
+        <li><b>Basic timing:</b> Position tracking between 0-100 (simple awning)</li>
+        <li><b>Extended timing:</b> Position range 0-100 with down position at 95 (roller shutter - slats rest on frame but still open)</li>
+      </ul>
+    </li>
+    
+    <li><b>Rolling Code &amp; Encryption:</b> The RTS protocol uses a rolling code counter 
+    and encryption key that are automatically updated with each transmission for security. 
+    These values are stored in the device definition and automatically synchronized.</li>
+    
+    <li><b>Pairing:</b> New devices must be paired with receivers using the "prog" command.
+    Each FHEM device gets its own unique remote control address.</li>
+    
+    <li><b>Multiple Devices:</b> You can control multiple Somfy devices independently by 
+    creating separate MMSOMFY device definitions with different addresses.</li>
+    
+    <li><b>Still in Development:</b> This module is actively being developed. Some features 
+    may be incomplete or subject to change.</li>
+  </ul>
+
 </ul>
-
-
 
 =end html
 =cut
