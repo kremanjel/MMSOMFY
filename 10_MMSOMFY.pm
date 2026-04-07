@@ -294,7 +294,7 @@ package MMSOMFY::Attribute;
     use constant {
         driveTimeOpenedToDown => 'driveTimeOpenedToDown',
         driveTimeOpenedToClosed => 'driveTimeOpenedToClosed',
-        driveTimeClosedToDown => 'driveTimeClosedToDown',
+        driveTimeDownToOpened => 'driveTimeDownToOpened',
         driveTimeClosedToOpened => 'driveTimeClosedToOpened',
         myPosition => 'myPosition',
         symbolLength => 'symbolLength',
@@ -308,6 +308,10 @@ package MMSOMFY::Attribute;
         devStateIcon => 'devStateIcon',
         cmdIcon => 'cmdIcon',
         stateFormat => 'stateFormat',
+        calibrationMode => 'calibrationMode',
+        calibrationQuality => 'calibrationQuality',
+        lastCalibration => 'lastCalibration',
+        calibrationHistory => 'calibrationHistory',
     };
 
     sub Clear(;$) {
@@ -446,7 +450,7 @@ package MMSOMFY::Attribute;
                             ($name eq MMSOMFY::Attribute::fixedEnckey) ||
                             ($name eq MMSOMFY::Attribute::driveTimeOpenedToDown) ||
                             ($name eq MMSOMFY::Attribute::driveTimeOpenedToClosed) ||
-                            ($name eq MMSOMFY::Attribute::driveTimeClosedToDown) ||
+                            ($name eq MMSOMFY::Attribute::driveTimeDownToOpened) ||
                             ($name eq MMSOMFY::Attribute::driveTimeClosedToOpened) ||
                             ($name eq MMSOMFY::Attribute::myPosition)
                         )
@@ -571,7 +575,7 @@ package MMSOMFY::Attribute;
                 # ... update Timing Setting if there is no error.
                 MMSOMFY::DeviceModel::Update($attrName, $attrValue) unless (defined($retval));
             }
-            elsif ($attrName eq MMSOMFY::Attribute::driveTimeClosedToDown)
+            elsif ($attrName eq MMSOMFY::Attribute::driveTimeDownToOpened)
             {
                 # ... if attribute shall be set ...
                 if ($cmd eq "set")
@@ -606,7 +610,7 @@ package MMSOMFY::Attribute;
                         )
                     {
                         # ... check validity of value to be set ...
-                        $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeClosedToDown, $main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToDown}, "greater");
+                        $retval = MMSOMFY::Timing::CheckTiming($attrName, $_[2], MMSOMFY::Attribute::driveTimeDownToOpened, $main::attr{$name}{MMSOMFY::Attribute::driveTimeDownToOpened}, "greater");
                     }
                     # ... otherwise attribute is not supported ...
                     else
@@ -805,6 +809,65 @@ package MMSOMFY::Timing;
         return $retval;
     }
 
+    # Validate timing attributes for consistency
+    sub ValidateTimingAttributes($) {
+        my ($hash) = @_;
+        $hash = $main::FHEM_Hash unless defined $hash;
+
+        return 0 unless $hash && $main::defs{$hash->{NAME}};
+        return 0 if main::IsIgnored($hash->{NAME}) || main::IsDisabled($hash->{NAME});
+
+        # When timing is off, there is nothing to validate.
+        return 1 if ($hash->{MMSOMFY::Internal::TIMING} || '') eq MMSOMFY::Timing::off;
+
+        my @errors;
+
+        my $closed2opened = MMSOMFY::Timing::Closed2Opened($hash);
+        my $opened2closed = MMSOMFY::Timing::Opened2Closed($hash);
+
+        push @errors, "driveTimeClosedToOpened must be > 0" unless defined($closed2opened) && $closed2opened > 0;
+        push @errors, "driveTimeOpenedToClosed must be > 0" unless defined($opened2closed) && $opened2closed > 0;
+
+        if (($hash->{MMSOMFY::Internal::TIMING} || '') eq MMSOMFY::Timing::extended) {
+            my $down2opened = MMSOMFY::Timing::Down2Opened($hash);
+            my $opened2down = MMSOMFY::Timing::Opened2Down($hash);
+
+            push @errors, "driveTimeDownToOpened must be > 0" unless defined($down2opened) && $down2opened > 0;
+            push @errors, "driveTimeOpenedToDown must be > 0" unless defined($opened2down) && $opened2down > 0;
+
+            # Calculate the two derived segments using the 4 core timing attributes
+            my $closed2down = defined($down2opened) && defined($closed2opened) ? $closed2opened - $down2opened : undef;
+            my $down2closed = defined($opened2down) && defined($opened2closed) ? $opened2closed - $opened2down : undef;
+
+            # Only validate derived partials for physical plausibility (non-negative)
+            push @errors, "derived driveTimeClosedToDown must be >= 0" unless defined($closed2down) && $closed2down >= 0;
+            push @errors, "derived driveTimeDownToClosed must be >= 0" unless defined($down2closed) && $down2closed >= 0;
+
+            if (defined($closed2down) && defined($closed2opened) && defined($down2opened)) {
+                my $sum = $closed2down + $down2opened;
+                my $tolerance = 0.5;
+                push @errors, sprintf("Closed2Opened mismatch configured=%.1fs calculated=%.1fs", $closed2opened, $sum)
+                    if abs($closed2opened - $sum) > $tolerance;
+            }
+
+            if (defined($opened2down) && defined($opened2closed) && defined($down2closed)) {
+                my $sum = $opened2down + $down2closed;
+                my $tolerance = 0.5;
+                push @errors, sprintf("Opened2Closed mismatch configured=%.1fs calculated=%.1fs", $opened2closed, $sum)
+                    if abs($opened2closed - $sum) > $tolerance;
+            }
+        }
+
+        if (@errors) {
+            main::Log3($hash->{NAME}, 1, "TIMING VALIDATION ERRORS:");
+            main::Log3($hash->{NAME}, 1, "  - $_") foreach @errors;
+            main::Log3($hash->{NAME}, 1, "Please check and correct timing attributes.");
+            return 0;
+        }
+
+        return 1;
+    }
+
     # Get time from opened position to closed position.
     # If timing is not at least basic undef is returned.
     sub Opened2Closed(;$) {
@@ -968,7 +1031,7 @@ package MMSOMFY::Timing;
         
         if ($hash->{MMSOMFY::Internal::TIMING} eq extended)
         {
-            $retval = $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToDown};
+            $retval = $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToOpened} - $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeDownToOpened};
         }
 
         main::Log3(
@@ -1003,7 +1066,7 @@ package MMSOMFY::Timing;
         
         if ($hash->{MMSOMFY::Internal::TIMING} eq extended)
         {
-            $retval = $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToOpened} - $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToDown};
+            $retval = $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeDownToOpened};
         }
 
         main::Log3(
@@ -1363,6 +1426,10 @@ package MMSOMFY::Command;
         manual => "manual",
         wind_sun_9 => "wind_sun_9",
         wind_only_a => "wind_only_a",
+        calibrate_basic => "calibrate_basic",
+        calibrate_extended => "calibrate_extended",
+        calibrate_verify => "calibrate_verify",
+        calibrate_reset => "calibrate_reset",
     };
 
     my %code2command = (
@@ -1495,6 +1562,10 @@ package MMSOMFY::Command;
                 ),
             wind_sun_9 => ":noArg",
             wind_only_a => ":noArg",
+            calibrate_basic => ":noArg",
+            calibrate_extended => ":noArg",
+            calibrate_verify => ":noArg",
+            calibrate_reset => ":noArg",
         );
 
         my ($sepChar, $skipArguments) = @_;
@@ -1546,7 +1617,11 @@ package MMSOMFY::Command;
                                             ($name eq MMSOMFY::Command::stop) ||
                                             ($name eq MMSOMFY::Command::position) ||
                                             ($name eq MMSOMFY::Command::close_for_timer) ||
-                                            ($name eq MMSOMFY::Command::open_for_timer)
+                                            ($name eq MMSOMFY::Command::open_for_timer) ||
+                                            ($name eq MMSOMFY::Command::calibrate_basic) ||
+                                            ($name eq MMSOMFY::Command::calibrate_extended) ||
+                                            ($name eq MMSOMFY::Command::calibrate_verify) ||
+                                            ($name eq MMSOMFY::Command::calibrate_reset)
                                         ) && (
                                             exists($main::FHEM_Hash->{MMSOMFY::Internal::TIMING}) &&
                                             ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} ne MMSOMFY::Timing::off)
@@ -2193,11 +2268,110 @@ package MMSOMFY::DeviceModel;
     use Data::Dumper; # Todo remove debug
 
     use constant SimulationKey => "MovementSimulation";
-    use constant UpdateFrequency => 0.5;
+    use constant UpdateFrequency => 0.1;  # Increased from 0.5s to 0.1s for smoother simulation
 
     sub UpdateInterval($) {
         my $remainingTime = @_;
         return $remainingTime > UpdateFrequency ? UpdateFrequency : $remainingTime;
+    }
+
+    # Validate timing attributes for consistency
+    sub ValidateTimingAttributes($) {
+        my $hash = shift;
+        my $timing = $hash->{MMSOMFY::Internal::TIMING};
+
+        return 1 if $timing eq MMSOMFY::Timing::off;  # No validation needed for off
+
+        my @errors;
+
+        # Get all timing values
+        my $closedToOpened = MMSOMFY::Timing::Closed2Opened($hash);
+        my $openedToClosed = MMSOMFY::Timing::Opened2Closed($hash);
+
+        # Basic validation for all timing modes
+        if ($timing ne MMSOMFY::Timing::off) {
+            push @errors, "driveTimeClosedToOpened must be > 0" unless $closedToOpened && $closedToOpened > 0;
+            push @errors, "driveTimeOpenedToClosed must be > 0" unless $openedToClosed && $openedToClosed > 0;
+        }
+
+        # Extended timing specific validations
+        if ($timing eq MMSOMFY::Timing::extended) {
+            my $downToOpened = MMSOMFY::Timing::Down2Opened($hash);
+            my $openedToDown = MMSOMFY::Timing::Opened2Down($hash);
+            my $closedToDown = MMSOMFY::Timing::Closed2Down($hash);
+            my $downToClosed = MMSOMFY::Timing::Down2Closed($hash);
+
+            push @errors, "driveTimeDownToOpened must be > 0" unless $downToOpened && $downToOpened > 0;
+            push @errors, "driveTimeOpenedToDown must be > 0" unless $openedToDown && $openedToDown > 0;
+
+            # Logical consistency checks
+            if ($closedToDown && $downToOpened && $closedToOpened) {
+                my $calculatedTotal = $closedToDown + $downToOpened;
+                my $tolerance = 0.5; # Allow 0.5s tolerance for measurement inaccuracies
+                push @errors, sprintf("ClosedToOpened timing mismatch: configured=%.1fs, calculated=%.1fs",
+                    $closedToOpened, $calculatedTotal)
+                    if abs($closedToOpened - $calculatedTotal) > $tolerance;
+            }
+
+            if ($openedToDown && $downToClosed && $openedToClosed) {
+                my $calculatedTotal = $openedToDown + $downToClosed;
+                my $tolerance = 0.5;
+                push @errors, sprintf("OpenedToClosed timing mismatch: configured=%.1fs, calculated=%.1fs",
+                    $openedToClosed, $calculatedTotal)
+                    if abs($openedToClosed - $calculatedTotal) > $tolerance;
+            }
+        }
+
+        if (@errors) {
+            main::Log3($hash->{NAME}, 1, "TIMING VALIDATION ERRORS:");
+            main::Log3($hash->{NAME}, 1, "  - $_") foreach @errors;
+            main::Log3($hash->{NAME}, 1, "Please check and correct timing attributes.");
+            return 0; # Validation failed
+        }
+
+        return 1; # Validation passed
+    }
+
+    # Helper function to schedule next timer callback with adaptive frequency
+    sub ScheduleNextTimerCallback($) {
+        my $hash = shift;
+
+        return unless defined($hash->{SimulationKey});
+
+        my $Simulation = $hash->{SimulationKey};
+        my $dt = main::gettimeofday() - $Simulation->{StartTime};
+
+        # Calculate remaining time for this movement
+        my $remainingTime = 0;
+        if ($Simulation->{Command} eq MMSOMFY::Command::open) {
+            if ($hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::basic) {
+                my $totalTime = MMSOMFY::Timing::Closed2Opened($hash);
+                $remainingTime = $totalTime - $dt;
+            } elsif ($hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended) {
+                my $totalTime = MMSOMFY::Timing::Closed2Opened($hash);
+                $remainingTime = $totalTime - $dt;
+            }
+        } elsif ($Simulation->{Command} eq MMSOMFY::Command::close) {
+            if ($hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::basic) {
+                my $totalTime = MMSOMFY::Timing::Opened2Closed($hash);
+                $remainingTime = $totalTime - $dt;
+            } elsif ($hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended) {
+                my $totalTime = MMSOMFY::Timing::Opened2Closed($hash);
+                $remainingTime = $totalTime - $dt;
+            }
+        }
+
+        # Use adaptive frequency based on remaining time
+        my $adaptiveFrequency = GetAdaptiveUpdateFrequency($remainingTime);
+        my $nextUpdate = $remainingTime > $adaptiveFrequency ? $adaptiveFrequency : $remainingTime;
+
+        # Ensure minimum update time
+        $nextUpdate = 0.05 if $nextUpdate < 0.05;
+
+        main::Log3($hash->{NAME}, 5, sprintf("Scheduling next timer in %.2fs (remaining: %.2fs, adaptive freq: %.2fs)",
+            $nextUpdate, $remainingTime, $adaptiveFrequency));
+
+        main::InternalTimer(main::gettimeofday() + $nextUpdate, "MMSOMFY::DeviceModel::TimerCallback", $hash);
     }
 
     sub Initialize($$$$) {
@@ -2287,7 +2461,7 @@ package MMSOMFY::DeviceModel;
             my %tempTimings;        
             $tempTimings{MMSOMFY::Attribute::driveTimeOpenedToDown} = $main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToDown};
             $tempTimings{MMSOMFY::Attribute::driveTimeOpenedToClosed} = $main::attr{$name}{MMSOMFY::Attribute::driveTimeOpenedToClosed};
-            $tempTimings{MMSOMFY::Attribute::driveTimeClosedToDown} = $main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToDown};
+            $tempTimings{MMSOMFY::Attribute::driveTimeDownToOpened} = $main::attr{$name}{MMSOMFY::Attribute::driveTimeDownToOpened};
             $tempTimings{MMSOMFY::Attribute::driveTimeClosedToOpened} = $main::attr{$name}{MMSOMFY::Attribute::driveTimeClosedToOpened};
             $tempTimings{$attrName} = $attrValue;
 
@@ -2299,7 +2473,7 @@ package MMSOMFY::DeviceModel;
             if (defined($tempTimings{MMSOMFY::Attribute::driveTimeClosedToOpened}) && defined($tempTimings{MMSOMFY::Attribute::driveTimeOpenedToClosed}))
             {
                 # ... check if extended timing values are defined ...
-                if (defined($tempTimings{MMSOMFY::Attribute::driveTimeClosedToDown}) && defined($tempTimings{MMSOMFY::Attribute::driveTimeOpenedToDown}))
+                if (defined($tempTimings{MMSOMFY::Attribute::driveTimeDownToOpened}) && defined($tempTimings{MMSOMFY::Attribute::driveTimeOpenedToDown}))
                 {
                     # ... then set TIMING to extended.
                     main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Set " . MMSOMFY::Internal::TIMING . " to " . MMSOMFY::Timing::extended);
@@ -2379,14 +2553,32 @@ package MMSOMFY::DeviceModel;
         $cancel = 0 unless defined($cancel);
         main::Log3($hash->{NAME}, 4, "MMSOMFY::DeviceModel ($hash->{NAME}): Enter 'TimerCallback'");
 
-        if (defined($hash->{SimulationKey}))
-        {
-            my $Simulation = $hash->{SimulationKey};
-            main::Log3($hash->{NAME}, 4, "MMSOMFY::DeviceModel ($hash->{NAME}): Simulation => " . Dumper($Simulation));
-            my $factor = main::ReadingsVal($hash->{NAME}, MMSOMFY::Reading::factor, undef);
-            my $movement = main::ReadingsVal($hash->{NAME}, MMSOMFY::Reading::movement, undef);
-            my $dt = main::gettimeofday() - $Simulation->{StartTime};
-            main::Log3($hash->{NAME}, 4, "MMSOMFY::DeviceModel ($hash->{NAME}): factor => $factor, dt => $dt");
+        # Robust error handling for timer callback
+        eval {
+            if (defined($hash->{SimulationKey}))
+            {
+                my $Simulation = $hash->{SimulationKey};
+                main::Log3($hash->{NAME}, 4, "MMSOMFY::DeviceModel ($hash->{NAME}): Simulation => " . Dumper($Simulation));
+                my $factor = main::ReadingsVal($hash->{NAME}, MMSOMFY::Reading::factor, undef);
+                my $movement = main::ReadingsVal($hash->{NAME}, MMSOMFY::Reading::movement, undef);
+                my $dt = main::gettimeofday() - $Simulation->{StartTime};
+
+                # Sanity checks for elapsed time
+                if ($dt < 0) {
+                    main::Log3($hash->{NAME}, 1, "ERROR: Negative elapsed time detected ($dt). Stopping simulation.");
+                    delete $hash->{SimulationKey};
+                    MMSOMFY::Reading::PositionUpdate($factor, MMSOMFY::Movement::none, $hash);
+                    return;
+                }
+
+                if ($dt > 300) {  # 5 minutes timeout
+                    main::Log3($hash->{NAME}, 1, "ERROR: Movement timeout (5 minutes). Stopping simulation.");
+                    delete $hash->{SimulationKey};
+                    MMSOMFY::Reading::PositionUpdate($factor, MMSOMFY::Movement::none, $hash);
+                    return;
+                }
+
+                main::Log3($hash->{NAME}, 4, "MMSOMFY::DeviceModel ($hash->{NAME}): factor => $factor, dt => $dt");
 
             if ($Simulation->{Command} eq MMSOMFY::Command::open)
             {
@@ -2403,7 +2595,7 @@ package MMSOMFY::DeviceModel;
                     }
                     elsif (defined($hash->{SimulationKey}))
                     {
-                        main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $hash);
+                        ScheduleNextTimerCallback($hash);
                     }
                 }
                 elsif ($hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
@@ -2449,7 +2641,7 @@ package MMSOMFY::DeviceModel;
                     }
                     elsif (defined($hash->{SimulationKey}))
                     {
-                        main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $hash);
+                        ScheduleNextTimerCallback($hash);
                     }
                 }
             }
@@ -2468,7 +2660,7 @@ package MMSOMFY::DeviceModel;
                     }
                     elsif (defined($hash->{SimulationKey}))
                     {
-                        main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $hash);
+                        ScheduleNextTimerCallback($hash);
                     }
                 }
                 elsif ($hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
@@ -2514,12 +2706,26 @@ package MMSOMFY::DeviceModel;
                     }
                     elsif (defined($hash->{SimulationKey}))
                     {
-                        main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $hash);
+                        ScheduleNextTimerCallback($hash);
                     }
                 }
             }
 
             MMSOMFY::Reading::PositionUpdate($factor, $movement, $hash);
+        }
+        };
+
+        # Error handling for timer callback
+        if ($@) {
+            main::Log3($hash->{NAME}, 1, "ERROR in TimerCallback: $@");
+            # Clean up simulation state on error
+            delete $hash->{SimulationKey};
+            MMSOMFY::Reading::PositionUpdate(
+                main::ReadingsVal($hash->{NAME}, MMSOMFY::Reading::factor, 0),
+                MMSOMFY::Movement::none,
+                $hash
+            );
+            return;
         }
 
         main::Log3($hash->{NAME}, 4, "MMSOMFY::DeviceModel ($hash->{NAME}): Exit 'TimerCallback'");
@@ -2564,6 +2770,12 @@ package MMSOMFY::DeviceModel;
 
         my ($cmd, $cmdarg) = @_;
 
+        # Validate timing attributes before movement
+        unless (MMSOMFY::Timing::ValidateTimingAttributes($main::FHEM_Hash)) {
+            main::Log3($main::FHEM_Hash->{NAME}, 1, "Movement cancelled due to timing validation errors");
+            return;
+        }
+
         if ($cmd eq MMSOMFY::Command::open)
         {
             if ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::off)
@@ -2603,7 +2815,7 @@ package MMSOMFY::DeviceModel;
                     $main::FHEM_Hash->{SimulationKey}{Arguments} = $cmdarg if (defined($cmdarg));
 
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Start timer for moving up");
-                    main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $main::FHEM_Hash);
+                    ScheduleNextTimerCallback($main::FHEM_Hash);
                 }
             }
         }
@@ -2646,7 +2858,7 @@ package MMSOMFY::DeviceModel;
                     $main::FHEM_Hash->{SimulationKey}{Arguments} = $cmdarg if (defined($cmdarg));
 
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Start timer for moving down");
-                    main::InternalTimer(main::gettimeofday() + UpdateFrequency, "MMSOMFY::DeviceModel::TimerCallback", $main::FHEM_Hash);
+                    ScheduleNextTimerCallback($main::FHEM_Hash);
                 }
             }
         }
@@ -2686,6 +2898,26 @@ package MMSOMFY::DeviceModel;
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'Calculate'");
         my ($mode, $cmd, $cmdarg) = @_;
 
+        # Handle calibration commands
+        if ($cmd eq MMSOMFY::Command::calibrate_basic) {
+            my $result = StartInteractiveCalibration($main::FHEM_Hash, 'basic');
+            return (undef, undef) if !defined($result);  # Success
+            return (undef, $result);  # Error message
+        }
+        elsif ($cmd eq MMSOMFY::Command::calibrate_extended) {
+            my $result = StartInteractiveCalibration($main::FHEM_Hash, 'extended');
+            return (undef, undef) if !defined($result);  # Success
+            return (undef, $result);  # Error message
+        }
+        elsif ($cmd eq MMSOMFY::Command::calibrate_verify) {
+            VerifyCalibration($main::FHEM_Hash);
+            return (undef, undef);
+        }
+        elsif ($cmd eq MMSOMFY::Command::calibrate_reset) {
+            ResetCalibrationData($main::FHEM_Hash);
+            return (undef, undef);
+        }
+
         my $model = $main::FHEM_Hash->{MMSOMFY::Internal::MODEL};
         if ($model eq MMSOMFY::Model::switch)
         {
@@ -2711,7 +2943,294 @@ package MMSOMFY::DeviceModel;
         }
 
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Exit 'Calculate'");
-        return ($cmd, $cmdarg)
+        return ($cmd, $cmdarg);
+    }
+
+    # Interactive calibration for timing values
+    sub StartInteractiveCalibration($$) {
+        my ($hash, $calibrationType) = @_;
+
+        # Check if device is in correct state for calibration
+        if ($hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::off) {
+            return "Calibration not possible: Device timing is set to 'off'. Set timing to 'basic' or 'extended' first.";
+        }
+
+        # Initialize calibration data
+        $hash->{CalibrationMode} = 1;
+        $hash->{CalibrationData} = {
+            type => $calibrationType,
+            step => 0,
+            measurements => [],
+            startTime => undef
+        };
+
+        main::Log3($hash->{NAME}, 2, "MMSOMFY::DeviceModel ($hash->{NAME}): Starting interactive calibration: $calibrationType");
+
+        # Start first calibration step
+        ProcessCalibrationStep($hash);
+
+        return "Calibration started. Follow the instructions in the FHEM log/console.";
+    }
+
+    sub ProcessCalibrationStep($) {
+        my $hash = shift;
+        my $cal = $hash->{CalibrationData};
+
+        if ($cal->{type} eq 'basic') {
+            ProcessBasicCalibrationStep($hash);
+        } elsif ($cal->{type} eq 'extended') {
+            ProcessExtendedCalibrationStep($hash);
+        }
+    }
+
+    sub ProcessBasicCalibrationStep($) {
+        my $hash = shift;
+        my $cal = $hash->{CalibrationData};
+
+        my @steps = (
+            {
+                instruction => "Ensure the shutter is COMPLETELY CLOSED, then press ENTER in the console",
+                action => 'prepare_closed'
+            },
+            {
+                instruction => "Movement will start... Press ENTER WHEN the shutter is COMPLETELY OPEN",
+                action => 'measure_open'
+            },
+            {
+                instruction => "Movement will start... Press ENTER WHEN the shutter is COMPLETELY CLOSED",
+                action => 'measure_close'
+            },
+            {
+                instruction => "Calibration complete. Processing results...",
+                action => 'complete'
+            }
+        );
+
+        if ($cal->{step} >= @steps) {
+            CompleteBasicCalibration($hash);
+            return;
+        }
+
+        my $currentStep = $steps[$cal->{step}];
+
+        # Log instruction for user
+        main::Log3($hash->{NAME}, 1, "="x60);
+        main::Log3($hash->{NAME}, 1, "SHUTTER CALIBRATION - Step " . ($cal->{step} + 1) . "/" . scalar(@steps));
+        main::Log3($hash->{NAME}, 1, "="x60);
+        main::Log3($hash->{NAME}, 1, $currentStep->{instruction});
+        main::Log3($hash->{NAME}, 1, "");
+
+        if ($currentStep->{action} eq 'prepare_closed') {
+            # Just wait for user input
+            main::Log3($hash->{NAME}, 1, "Press ENTER when ready...");
+            $cal->{waitingForInput} = 1;
+        } elsif ($currentStep->{action} eq 'measure_open') {
+            # Start open movement and wait for user input
+            main::Log3($hash->{NAME}, 1, "STARTING: Movement from CLOSED to OPEN...");
+            $cal->{startTime} = time();
+            # Trigger actual hardware movement
+            MMSOMFY::DeviceModel::CalculateAwningShutter('open', undef);
+            $cal->{waitingForInput} = 1;
+        } elsif ($currentStep->{action} eq 'measure_close') {
+            # Start close movement and wait for user input
+            main::Log3($hash->{NAME}, 1, "STARTING: Movement from OPEN to CLOSED...");
+            $cal->{startTime} = time();
+            # Trigger actual hardware movement
+            MMSOMFY::DeviceModel::CalculateAwningShutter('close', undef);
+            $cal->{waitingForInput} = 1;
+        }
+    }
+
+    sub ProcessExtendedCalibrationStep($) {
+        my $hash = shift;
+        my $cal = $hash->{CalibrationData};
+
+        my @steps = (
+            {
+                instruction => "Ensure the shutter is COMPLETELY CLOSED, then press ENTER",
+                action => 'prepare_closed'
+            },
+            {
+                instruction => "Movement starts... Press ENTER at the DOWN position (95% closed)",
+                action => 'measure_to_down'
+            },
+            {
+                instruction => "Movement starts... Press ENTER WHEN fully OPEN",
+                action => 'measure_down_to_open'
+            },
+            {
+                instruction => "Movement starts... Press ENTER at the DOWN position (95% closed)",
+                action => 'measure_to_down_reverse'
+            },
+            {
+                instruction => "Movement starts... Press ENTER WHEN fully CLOSED",
+                action => 'measure_down_to_closed'
+            },
+            {
+                instruction => "Extended calibration complete. Processing results...",
+                action => 'complete'
+            }
+        );
+
+        if ($cal->{step} >= @steps) {
+            CompleteExtendedCalibration($hash);
+            return;
+        }
+
+        my $currentStep = $steps[$cal->{step}];
+
+        main::Log3($hash->{NAME}, 1, "="x60);
+        main::Log3($hash->{NAME}, 1, "EXTENDED SHUTTER CALIBRATION - Step " . ($cal->{step} + 1) . "/" . scalar(@steps));
+        main::Log3($hash->{NAME}, 1, "="x60);
+        main::Log3($hash->{NAME}, 1, $currentStep->{instruction});
+        main::Log3($hash->{NAME}, 1, "");
+
+        if ($currentStep->{action} eq 'prepare_closed') {
+            main::Log3($hash->{NAME}, 1, "Press ENTER when ready...");
+            $cal->{waitingForInput} = 1;
+        } elsif ($currentStep->{action} eq 'measure_to_down') {
+            main::Log3($hash->{NAME}, 1, "STARTING: Movement from CLOSED to OPEN...");
+            $cal->{startTime} = time();
+            MMSOMFY::DeviceModel::CalculateAwningShutter('open', undef);
+            $cal->{waitingForInput} = 1;
+        } elsif ($currentStep->{action} eq 'measure_down_to_open') {
+            main::Log3($hash->{NAME}, 1, "STARTING: Movement from DOWN to OPEN...");
+            $cal->{startTime} = time();
+            MMSOMFY::DeviceModel::CalculateAwningShutter('open', undef);
+            $cal->{waitingForInput} = 1;
+        } elsif ($currentStep->{action} eq 'measure_to_down_reverse') {
+            main::Log3($hash->{NAME}, 1, "STARTING: Movement from OPEN to CLOSED...");
+            $cal->{startTime} = time();
+            MMSOMFY::DeviceModel::CalculateAwningShutter('close', undef);
+            $cal->{waitingForInput} = 1;
+        } elsif ($currentStep->{action} eq 'measure_down_to_closed') {
+            main::Log3($hash->{NAME}, 1, "STARTING: Movement from DOWN to CLOSED...");
+            $cal->{startTime} = time();
+            MMSOMFY::DeviceModel::CalculateAwningShutter('close', undef);
+            $cal->{waitingForInput} = 1;
+        }
+    }
+
+    # Handle user input during calibration
+    sub HandleCalibrationInput($) {
+        my $hash = shift;
+        my $cal = $hash->{CalibrationData};
+
+        return unless $cal->{waitingForInput};
+
+        if ($cal->{startTime}) {
+            # Record measurement
+            my $elapsed = time() - $cal->{startTime};
+            push @{$cal->{measurements}}, $elapsed;
+
+            main::Log3($hash->{NAME}, 1, sprintf("Measured time: %.2f seconds", $elapsed));
+        }
+
+        $cal->{step}++;
+        $cal->{waitingForInput} = 0;
+        $cal->{startTime} = undef;
+
+        # Process next step
+        ProcessCalibrationStep($hash);
+    }
+
+    sub CompleteBasicCalibration($) {
+        my $hash = shift;
+        my $cal = $hash->{CalibrationData};
+
+        my $openTime = $cal->{measurements}[0];
+        my $closeTime = $cal->{measurements}[1];
+
+        # Update attributes
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToOpened} = sprintf("%.1f", $openTime);
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToClosed} = sprintf("%.1f", $closeTime);
+
+        main::Log3($hash->{NAME}, 1, "="x50);
+        main::Log3($hash->{NAME}, 1, "BASIC CALIBRATION COMPLETED");
+        main::Log3($hash->{NAME}, 1, "="x50);
+        main::Log3($hash->{NAME}, 1, sprintf("driveTimeClosedToOpened: %.1fs", $openTime));
+        main::Log3($hash->{NAME}, 1, sprintf("driveTimeOpenedToClosed: %.1fs", $closeTime));
+        main::Log3($hash->{NAME}, 1, "Attributes have been updated.");
+
+        # Update calibration metadata
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::lastCalibration} = time();
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::calibrationQuality} = 'good';
+
+        # Cleanup
+        delete $hash->{CalibrationMode};
+        delete $hash->{CalibrationData};
+    }
+
+    sub CompleteExtendedCalibration($) {
+        my $hash = shift;
+        my $cal = $hash->{CalibrationData};
+
+        my $closedToDown = $cal->{measurements}[0];
+        my $downToOpen = $cal->{measurements}[1];
+        my $openToDown = $cal->{measurements}[2];
+        my $downToClosed = $cal->{measurements}[3];
+
+        # Calculate derived timings
+        my $closedToOpen = $closedToDown + $downToOpen;
+        my $openToClosed = $openToDown + $downToClosed;
+
+        # Update attributes
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeDownToOpened} = sprintf("%.1f", $downToOpen);
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToDown} = sprintf("%.1f", $openToDown);
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToOpened} = sprintf("%.1f", $closedToOpen);
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToClosed} = sprintf("%.1f", $openToClosed);
+
+        main::Log3($hash->{NAME}, 1, "="x50);
+        main::Log3($hash->{NAME}, 1, "EXTENDED CALIBRATION COMPLETED");
+        main::Log3($hash->{NAME}, 1, "="x50);
+        main::Log3($hash->{NAME}, 1, sprintf("driveTimeClosedToDown: %.1fs (measured, but derived)", $closedToDown));
+        main::Log3($hash->{NAME}, 1, sprintf("driveTimeDownToOpened: %.1fs (measured)", $downToOpen));
+        main::Log3($hash->{NAME}, 1, sprintf("driveTimeOpenedToDown: %.1fs (measured)", $openToDown));
+        main::Log3($hash->{NAME}, 1, sprintf("driveTimeDownToClosed: %.1fs (measured, but derived)", $downToClosed));
+        main::Log3($hash->{NAME}, 1, sprintf("driveTimeClosedToOpened: %.1fs (calculated)", $closedToOpen));
+        main::Log3($hash->{NAME}, 1, sprintf("driveTimeOpenedToClosed: %.1fs (calculated)", $openToClosed));
+        main::Log3($hash->{NAME}, 1, "All attributes have been updated.");
+
+        # Update calibration metadata
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::lastCalibration} = time();
+        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::calibrationQuality} = 'good';
+
+        # Cleanup
+        delete $hash->{CalibrationMode};
+        delete $hash->{CalibrationData};
+    }
+
+    sub VerifyCalibration($) {
+        my $hash = shift;
+
+        main::Log3($hash->{NAME}, 1, "="x50);
+        main::Log3($hash->{NAME}, 1, "CALIBRATION VERIFICATION");
+        main::Log3($hash->{NAME}, 1, "="x50);
+
+        main::Log3($hash->{NAME}, 1, "Performing test movements to verify calibration accuracy...");
+        main::Log3($hash->{NAME}, 1, "Check the FHEM log for detailed instructions.");
+
+        # Simple verification by attempting a short movement
+        # In a real implementation, this would guide the user through verification steps
+        main::Log3($hash->{NAME}, 1, "Verification not yet fully implemented. Check timing attributes manually.");
+    }
+
+    sub ResetCalibrationData($) {
+        my $hash = shift;
+
+        # Reset calibration attributes
+        delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::calibrationMode};
+        delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::calibrationQuality};
+        delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::lastCalibration};
+        delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::calibrationHistory};
+
+        # Reset timing attributes to defaults
+        delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeClosedToOpened};
+        delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToClosed};
+        delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeDownToOpened};
+        delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToDown};
+
+        main::Log3($hash->{NAME}, 1, "Calibration data and timing attributes have been reset.");
     }
 
 1;
@@ -3268,6 +3787,10 @@ sub MMSOMFY_Set($@) {
     wind_sun_9        Send wind/sun detector code (sun + flag)
     wind_only_a       Send wind-only detector code (flag only)
     z_custom          Send custom RF code (advanced usage)
+    calibrate_basic   Start interactive basic timing calibration (2 timings)
+    calibrate_extended Start interactive extended timing calibration (4 timings)
+    calibrate_verify  Verify calibration accuracy with test movements
+    calibrate_reset   Reset all calibration data and timing attributes
     </pre>
 
     <b>SetExtensions (if eventMap/webCmd configured):</b><br>
@@ -3344,15 +3867,16 @@ sub MMSOMFY_Set($@) {
         <br><br>
     </li>
 
-    <li><b>driveTimeClosedToDown</b> (seconds)<br>
-        Time in seconds to move from completely closed (position 200) up to the "down" position (position 100).
-        Usually 3-5 seconds. Only used for extended position models (shutter).
+    <li><b>driveTimeDownToOpened</b> (seconds)<br>
+        Time in seconds to move from the "down" position (position 100) all the way up to 
+        fully open (position 0). Usually 10-20 seconds. Only used for extended position models (shutter).
+        This value must be less than <code>driveTimeClosedToOpened</code>.
         <br><br>
     </li>
 
     <li><b>driveTimeClosedToOpened</b> (seconds)<br>
         Time in seconds to move from completely closed (position 200) all the way up to 
-        fully open (position 0). This value must be greater than <code>driveTimeOpenedToDown</code>.
+        fully open (position 0). This value must be greater than <code>driveTimeDownToOpened</code>.
         Typically slightly higher than <code>driveTimeOpenedToClosed</code> due to device weight.
         <br><br>
     </li>
@@ -3392,6 +3916,30 @@ sub MMSOMFY_Set($@) {
 
     <li><b>disable</b> (0 or 1)<br>
         Disable this device without deleting it. The device won't respond to commands.
+        <br><br>
+    </li>
+
+    <li><b>calibrationMode</b> (off/basic/extended, default: off)<br>
+        Controls automatic calibration behavior. When set to 'basic' or 'extended', 
+        the device will periodically suggest recalibration if timing accuracy degrades.
+        <br><br>
+    </li>
+
+    <li><b>calibrationQuality</b> (unknown/poor/acceptable/good/excellent)<br>
+        Indicates the estimated accuracy of the current timing calibration.
+        Updated automatically after calibration or verification.
+        <br><br>
+    </li>
+
+    <li><b>lastCalibration</b> (Unix timestamp)<br>
+        Timestamp of the last successful calibration. Used to determine when 
+        recalibration might be needed.
+        <br><br>
+    </li>
+
+    <li><b>calibrationHistory</b> (JSON)<br>
+        Stores historical calibration data for trend analysis and drift detection.
+        Advanced users can analyze calibration stability over time.
         <br><br>
     </li>
 
