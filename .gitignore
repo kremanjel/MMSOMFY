@@ -1,3 +1,5 @@
 10_SOMFY.pm
 deploy.cmd
 MMSOMFY_Set_Part.pm
+cover_db/
+reports/

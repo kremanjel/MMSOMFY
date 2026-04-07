@@ -205,7 +205,12 @@ package MMSOMFY::Internal;
     # enumeration items
     use constant {
         MODEL => "MODEL",
-        TIMING => "TIMING"
+        TIMING => "TIMING",
+        CALIBRATION_STATE => "CALIBRATION_STATE",
+        CALIBRATION_STEP => "CALIBRATION_STEP",
+        CALIBRATION_INSTRUCTION => "CALIBRATION_INSTRUCTION",
+        CALIBRATION_CONFIRM_CMD => "CALIBRATION_CONFIRM_CMD",
+        CALIBRATION_LAST_MEASUREMENT => "CALIBRATION_LAST_MEASUREMENT",
     };
 
     # Get string with all items of enumeration separated by given character.
@@ -278,6 +283,39 @@ package MMSOMFY::Internal;
         );
     }
 
+    sub SetCalibrationValues($$$$$;$) {
+        my ($state, $step, $instruction, $confirmCmd, $lastMeasurement, $hash) = @_;
+        $hash = $main::FHEM_Hash unless defined $hash;
+
+        return if
+        (
+            !$hash ||
+            !$main::defs{$hash->{NAME}} ||
+            main::IsIgnored($hash->{NAME}) ||
+            main::IsDisabled($hash->{NAME})
+        );
+
+        $hash->{MMSOMFY::Internal::CALIBRATION_STATE} = $state;
+        $hash->{MMSOMFY::Internal::CALIBRATION_STEP} = $step;
+        $hash->{MMSOMFY::Internal::CALIBRATION_INSTRUCTION} = $instruction;
+        $hash->{MMSOMFY::Internal::CALIBRATION_CONFIRM_CMD} = $confirmCmd;
+        $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT} = $lastMeasurement;
+    }
+
+    sub ClearCalibrationValues(;$) {
+        my ($hash) = @_;
+        $hash = $main::FHEM_Hash unless defined $hash;
+
+        SetCalibrationValues(
+            "idle",
+            0,
+            "No calibration active",
+            "calibrate",
+            "-",
+            $hash
+        );
+    }
+
 1;
 
 ################################################################################
@@ -289,6 +327,7 @@ package MMSOMFY::Attribute;
     use strict;
     use warnings;
     use Data::Dumper;
+    use Scalar::Util qw(looks_like_number);
 
     #enumeration items
     use constant {
@@ -296,6 +335,7 @@ package MMSOMFY::Attribute;
         driveTimeOpenedToClosed => 'driveTimeOpenedToClosed',
         driveTimeDownToOpened => 'driveTimeDownToOpened',
         driveTimeClosedToOpened => 'driveTimeClosedToOpened',
+        positionInverse => 'positionInverse',
         myPosition => 'myPosition',
         symbolLength => 'symbolLength',
         repetition => 'repetition',
@@ -388,8 +428,9 @@ package MMSOMFY::Attribute;
         my %values = (
             driveTimeOpenedToDown => "",
             driveTimeOpenedToClosed => "",
-            driveTimeClosedToDown => "",
+            driveTimeDownToOpened => "",
             driveTimeClosedToOpened => "",
+            positionInverse => ":0,1",
             myPosition => "",
             symbolLength => "",
             repetition => "",
@@ -452,6 +493,7 @@ package MMSOMFY::Attribute;
                             ($name eq MMSOMFY::Attribute::driveTimeOpenedToClosed) ||
                             ($name eq MMSOMFY::Attribute::driveTimeDownToOpened) ||
                             ($name eq MMSOMFY::Attribute::driveTimeClosedToOpened) ||
+                            ($name eq MMSOMFY::Attribute::positionInverse) ||
                             ($name eq MMSOMFY::Attribute::myPosition)
                         )
                     )
@@ -625,32 +667,49 @@ package MMSOMFY::Attribute;
             }
             elsif ($attrName eq MMSOMFY::Attribute::myPosition)
             {
-                # Todo: go_my Position must be defined differently.
-
-                ## ... if attribute shall be set ...
-                # if ($cmd eq "set")
-                # {
-                #     # ... if model is a shutter or awning, attribute is supported ...
-                #     if
-                #         (
-                #             ($hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
-                #             ($hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
-                #         )
-                #     {
-                #         # ... check if it is within position range ...
-                #         if ($attrValue > MMSOMFY::Position::MaxPos() || $attrValue < MMSOMFY::Position::MinPos())
-                #         {
-                #             # ... if outside bounds return error.
-                #             $retval = "MMSOMFY::Attribute::CheckAttribute: Value for $attrName ($attrValue) must be between '" . MMSOMFY::Position::MinPos() . "' and '" . MMSOMFY::Position::MaxPos() . "'";
-                #         }
-                #     }
-                #     # ... otherwise attribute is not supported ...
-                #     else
-                #     {
-                #         # ... error is returned.
-                #         $retval = "MMSOMFY::Attribute::CheckAttribute ($hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
-                #     }
-                #}
+                if ($cmd eq "set")
+                {
+                    if
+                        (
+                            ($hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                            ($hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
+                        )
+                    {
+                        if (!looks_like_number($attrValue) || $attrValue < MMSOMFY::Position::STARTPOS() || $attrValue > MMSOMFY::Position::ENDPOS())
+                        {
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($hash->{NAME}): Value for $attrName ($attrValue) must be between '" . MMSOMFY::Position::STARTPOS() . "' and '" . MMSOMFY::Position::ENDPOS() . "'";
+                        }
+                        else
+                        {
+                            $_[2] = sprintf("%.0f", $attrValue);
+                        }
+                    }
+                    else
+                    {
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                    }
+                }
+            }
+            elsif ($attrName eq MMSOMFY::Attribute::positionInverse)
+            {
+                if ($cmd eq "set")
+                {
+                    if
+                        (
+                            ($hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
+                            ($hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
+                        )
+                    {
+                        if ($attrValue !~ /^(0|1)$/)
+                        {
+                            $retval = "MMSOMFY::Attribute::CheckAttribute ($hash->{NAME}): Value for $attrName must be 0 or 1.";
+                        }
+                    }
+                    else
+                    {
+                        $retval = "MMSOMFY::Attribute::CheckAttribute ($hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
+                    }
+                }
             }
             # for remotes only
             elsif ($attrName eq MMSOMFY::Attribute::ignore)
@@ -1237,7 +1296,17 @@ package MMSOMFY::Reading;
         );
 
         my $name = $hash->{NAME};
-        my $position = sprintf("%.0f", $factor * 100);
+        my $positionFactor = $factor;
+
+        if (main::AttrVal($name, MMSOMFY::Attribute::positionInverse, 0) eq "1")
+        {
+            $positionFactor = 1 - $positionFactor;
+        }
+
+        $positionFactor = 0 if $positionFactor < 0;
+        $positionFactor = 1 if $positionFactor > 1;
+
+        my $position = sprintf("%.0f", MMSOMFY::Position::STARTPOS() + ($positionFactor * MMSOMFY::Position::RANGE()));
 
         main::Log3(
             $name,
@@ -1426,8 +1495,9 @@ package MMSOMFY::Command;
         manual => "manual",
         wind_sun_9 => "wind_sun_9",
         wind_only_a => "wind_only_a",
-        calibrate_basic => "calibrate_basic",
-        calibrate_extended => "calibrate_extended",
+        calibrate => "calibrate",
+        calibrate_next => "calibrate_next",
+        calibrate_abort => "calibrate_abort",
         calibrate_verify => "calibrate_verify",
         calibrate_reset => "calibrate_reset",
     };
@@ -1435,7 +1505,7 @@ package MMSOMFY::Command;
     my %code2command = (
         # Remotes doesn't support any commands but must decode them.
         MMSOMFY::Model::remote => {
-            "10" => "stop",        # stop or go my
+            "10" => "go_my",       # stop or go my
             "20" => "up",          # go up
             "40" => "down",        # go down
             "80" => "prog",        # pairing or unpairing
@@ -1443,7 +1513,7 @@ package MMSOMFY::Command;
             "A0" => "wind_only_a", # wind only (flag)
         },
         MMSOMFY::Model::awning => {
-            "10" => "stop",        # stop or go my
+            "10" => "go_my",       # stop or go my
             "20" => "open",        # go up
             "40" => "close",       # go down
             "80" => "prog",        # pairing or unpairing
@@ -1451,7 +1521,7 @@ package MMSOMFY::Command;
             "A0" => "wind_only_a", # wind only (flag)
         },
         MMSOMFY::Model::shutter => {
-            "10" => "stop",        # stop or go my
+            "10" => "go_my",       # stop or go my
             "20" => "open",        # go up
             "40" => "close",       # go down
             "80" => "prog",        # pairing or unpairing
@@ -1562,14 +1632,21 @@ package MMSOMFY::Command;
                 ),
             wind_sun_9 => ":noArg",
             wind_only_a => ":noArg",
-            calibrate_basic => ":noArg",
-            calibrate_extended => ":noArg",
+            calibrate => ":noArg",
+            calibrate_next => ":noArg",
+            calibrate_abort => ":noArg",
             calibrate_verify => ":noArg",
             calibrate_reset => ":noArg",
         );
 
         my ($sepChar, $skipArguments) = @_;
         $sepChar = " " unless defined $sepChar;
+        my $calibrationActive =
+            $main::FHEM_Hash->{CalibrationMode} &&
+            (
+                $main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning ||
+                $main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter
+            );
 
         no strict 'refs';
         my $pkg = __PACKAGE__;
@@ -1605,30 +1682,42 @@ package MMSOMFY::Command;
                                     ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning) ||
                                     ($main::FHEM_Hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter)
                                 ) && (
-                                    ($name eq MMSOMFY::Command::open) ||
-                                    ($name eq MMSOMFY::Command::close) ||
-                                    ($name eq MMSOMFY::Command::prog) ||
-                                    ($name eq MMSOMFY::Command::z_custom) ||
-                                    ($name eq MMSOMFY::Command::manual) ||
-                                    ($name eq MMSOMFY::Command::wind_sun_9) ||
-                                    ($name eq MMSOMFY::Command::wind_only_a) ||
                                     (
+                                        $calibrationActive &&
                                         (
-                                            ($name eq MMSOMFY::Command::stop) ||
-                                            ($name eq MMSOMFY::Command::position) ||
-                                            ($name eq MMSOMFY::Command::close_for_timer) ||
-                                            ($name eq MMSOMFY::Command::open_for_timer) ||
-                                            ($name eq MMSOMFY::Command::calibrate_basic) ||
-                                            ($name eq MMSOMFY::Command::calibrate_extended) ||
-                                            ($name eq MMSOMFY::Command::calibrate_verify) ||
-                                            ($name eq MMSOMFY::Command::calibrate_reset)
-                                        ) && (
-                                            exists($main::FHEM_Hash->{MMSOMFY::Internal::TIMING}) &&
-                                            ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} ne MMSOMFY::Timing::off)
+                                            ($name eq MMSOMFY::Command::calibrate_next) ||
+                                            ($name eq MMSOMFY::Command::calibrate_abort)
                                         )
                                     ) || (
-                                        ($name eq MMSOMFY::Command::go_my) &&
-                                        exists($main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::myPosition})
+                                        !$calibrationActive &&
+                                        (
+                                            ($name eq MMSOMFY::Command::open) ||
+                                            ($name eq MMSOMFY::Command::close) ||
+                                            ($name eq MMSOMFY::Command::prog) ||
+                                            ($name eq MMSOMFY::Command::z_custom) ||
+                                            ($name eq MMSOMFY::Command::manual) ||
+                                            ($name eq MMSOMFY::Command::wind_sun_9) ||
+                                            ($name eq MMSOMFY::Command::wind_only_a) ||
+                                            (
+                                                (
+                                                    ($name eq MMSOMFY::Command::stop) ||
+                                                    ($name eq MMSOMFY::Command::position) ||
+                                                    ($name eq MMSOMFY::Command::close_for_timer) ||
+                                                    ($name eq MMSOMFY::Command::open_for_timer) ||
+                                                    ($name eq MMSOMFY::Command::calibrate) ||
+                                                    ($name eq MMSOMFY::Command::calibrate_next) ||
+                                                    ($name eq MMSOMFY::Command::calibrate_abort) ||
+                                                    ($name eq MMSOMFY::Command::calibrate_verify) ||
+                                                    ($name eq MMSOMFY::Command::calibrate_reset)
+                                                ) && (
+                                                    exists($main::FHEM_Hash->{MMSOMFY::Internal::TIMING}) &&
+                                                    ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} ne MMSOMFY::Timing::off)
+                                                )
+                                            ) || (
+                                                ($name eq MMSOMFY::Command::go_my) &&
+                                                exists($main::attr{$main::FHEM_Hash->{NAME}}{MMSOMFY::Attribute::myPosition})
+                                            )
+                                        )
                                     )
                                 )
                             )
@@ -1681,6 +1770,25 @@ package MMSOMFY::Command;
         # ... and command list with arguments ...
         my $cmdListwithArg = MMSOMFY::Command::ToString("|", 0);
         main::Log3($name, 5, "MMSOMFY::Command::Check ($name): CMDListwithArgs: $cmdListwithArg") if defined($cmdListwithArg);
+
+        # Normalize remote My semantics early: when moving, go_my must act as stop.
+        if ($cmd eq MMSOMFY::Command::go_my)
+        {
+            my $movement = main::ReadingsVal($name, MMSOMFY::Reading::movement, undef);
+            if
+                (
+                    $movement &&
+                    (
+                        $movement eq MMSOMFY::Movement::up ||
+                        $movement eq MMSOMFY::Movement::down
+                    )
+                )
+            {
+                $_[1] = $cmd = MMSOMFY::Command::stop;
+                $_[2] = $cmdarg = undef;
+                main::Log3($name, 3, "MMSOMFY::Command::Check ($name): Command '" . MMSOMFY::Command::go_my . "' replaced with '" . MMSOMFY::Command::stop . "' before validation due to moving '$movement'");
+            }
+        }
 
         if
             (
@@ -1840,7 +1948,7 @@ package MMSOMFY::Command;
                     $retval = "MMSOMFY::Command::Check ($name): Bad position value";
                 }
                 # ... otherwise if argument is out of range ...
-                elsif ($cmdarg < MMSOMFY::Position::STARTPOS || $cmdarg > MMSOMFY::Position::ENDPOS)
+                elsif ($cmdarg < MMSOMFY::Position::STARTPOS() || $cmdarg > MMSOMFY::Position::ENDPOS())
                 {
                     # ... set an error and clear the cmd.
                     $_[1] = undef;
@@ -1849,7 +1957,7 @@ package MMSOMFY::Command;
                     $retval = "MMSOMFY::Command::Check ($name): Position value out of range";
                 }
                 # ... otherwise, if the argument deviates less than 1% from the value for closed ...
-                elsif (abs(MMSOMFY::Position::ENDPOS - $cmdarg) < 1)
+                elsif (abs(MMSOMFY::Position::ENDPOS() - $cmdarg) < 1)
                 {
                     # ... then set cmd directly to close and clear the argument.
                     $_[1] = $cmd = MMSOMFY::Command::close;
@@ -1857,7 +1965,7 @@ package MMSOMFY::Command;
                     main::Log3($name, 3, "MMSOMFY::Command::Check ($name): Command '" . MMSOMFY::Command::position . "' replaced by '" . $cmd . "', argument cleared.");
                 }
                 # ... otherwise, if the argument deviates less than 1% from the value for opened ...
-                elsif (abs(MMSOMFY::Position::STARTPOS - $cmdarg) < 1)
+                elsif (abs(MMSOMFY::Position::STARTPOS() - $cmdarg) < 1)
                 {
                     # ... then set cmd directly to open and clear the argument.
                     $_[1] = $cmd = MMSOMFY::Command::open;
@@ -1937,7 +2045,7 @@ package MMSOMFY::Command;
         {
             # Msg-Format
             # YsAA2F18F00085E8
-            if (substr($msg, 0, 2) ne "Yr" || substr($msg, 0, 2) ne "Yt")
+            if (substr($msg, 0, 2) ne "Yr" && substr($msg, 0, 2) ne "Yt")
             {
                 # Check for correct length 16 character
                 if (length($msg) == 16)
@@ -2099,7 +2207,7 @@ package MMSOMFY::Command;
         my $message = "t" . $value;
 
         # ... send message to device ...
-        # DEBUG deactivated: main::IOWrite($main::FHEM_Hash, "Y", $message);
+        main::IOWrite($main::FHEM_Hash, "Y", $message);
 
         # ... and log change.
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::ChangeCULAttribute ($main::FHEM_Hash->{NAME}): Set $attribute to $value for $main::FHEM_Hash->{IODev}->{NAME}");
@@ -2196,7 +2304,7 @@ package MMSOMFY::Command;
                 main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::Send2Device ($main::FHEM_Hash->{NAME}): Message: $message");
 
                 # ... and send command to device.
-                # DEBUG deactivated: main::IOWrite($main::FHEM_Hash, 'sendMsg', $message);
+                main::IOWrite($main::FHEM_Hash, 'sendMsg', $message);
             }
             # ... otherwise we expect a CUL stick ...
             else
@@ -2219,7 +2327,7 @@ package MMSOMFY::Command;
                 main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::Command::Send2Device ($main::FHEM_Hash->{NAME}): Message: $message");
 
                 # ... and send command to device.
-                # DEBUG deactivated: main::IOWrite( $FHEM_Hash, "Y", $message );
+                main::IOWrite($main::FHEM_Hash, "Y", $message );
 
                 ## ... if smybol-length was changed before  ...
                 if ($symbolLength ne $somfy_defsymbolwidth)
@@ -2268,11 +2376,20 @@ package MMSOMFY::DeviceModel;
     use Data::Dumper; # Todo remove debug
 
     use constant SimulationKey => "MovementSimulation";
-    use constant UpdateFrequency => 0.1;  # Increased from 0.5s to 0.1s for smoother simulation
+    use constant UpdateFrequency => 0.25;  # Keep simulation responsive without overloading the FHEM event loop
 
     sub UpdateInterval($) {
-        my $remainingTime = @_;
+        my ($remainingTime) = @_;
         return $remainingTime > UpdateFrequency ? UpdateFrequency : $remainingTime;
+    }
+
+    sub GetAdaptiveUpdateFrequency($)
+    {
+        my ($remainingTime) = @_;
+
+        return 0.10 if (!defined($remainingTime) || $remainingTime <= 0.5);
+        return 0.20 if ($remainingTime <= 5);
+        return UpdateFrequency;
     }
 
     # Validate timing attributes for consistency
@@ -2365,8 +2482,8 @@ package MMSOMFY::DeviceModel;
         my $adaptiveFrequency = GetAdaptiveUpdateFrequency($remainingTime);
         my $nextUpdate = $remainingTime > $adaptiveFrequency ? $adaptiveFrequency : $remainingTime;
 
-        # Ensure minimum update time
-        $nextUpdate = 0.05 if $nextUpdate < 0.05;
+        # Keep a lower bound to avoid flooding the event loop with callbacks.
+        $nextUpdate = 0.10 if $nextUpdate < 0.10;
 
         main::Log3($hash->{NAME}, 5, sprintf("Scheduling next timer in %.2fs (remaining: %.2fs, adaptive freq: %.2fs)",
             $nextUpdate, $remainingTime, $adaptiveFrequency));
@@ -2434,6 +2551,9 @@ package MMSOMFY::DeviceModel;
             $main::FHEM_Hash->{MMSOMFY::Internal::TIMING} = MMSOMFY::Timing::off;
             $main::attr{$main::FHEM_Hash->{NAME}}{webCmd} = "open:close";
             $main::attr{$main::FHEM_Hash->{NAME}}{cmdIcon} = "open:control_centr_arrow_up close:control_centr_arrow_down";
+
+            # Initialize calibration internals for awning/shutter devices.
+            MMSOMFY::Internal::ClearCalibrationValues($main::FHEM_Hash);
 
             $main::attr{$main::FHEM_Hash->{NAME}}{devStateIcon} = ($model eq MMSOMFY::Model::shutter)
                 ? "opened:fts_window_2w closed:fts_shutter_100"
@@ -2576,6 +2696,11 @@ package MMSOMFY::DeviceModel;
                     delete $hash->{SimulationKey};
                     MMSOMFY::Reading::PositionUpdate($factor, MMSOMFY::Movement::none, $hash);
                     return;
+                }
+
+                if (defined($Simulation->{TimerStopTime}) && main::gettimeofday() >= $Simulation->{TimerStopTime})
+                {
+                    $cancel = 1;
                 }
 
                 main::Log3($hash->{NAME}, 4, "MMSOMFY::DeviceModel ($hash->{NAME}): factor => $factor, dt => $dt");
@@ -2769,6 +2894,20 @@ package MMSOMFY::DeviceModel;
         );
 
         my ($cmd, $cmdarg) = @_;
+        my $timerStopAfter = undef;
+
+        if
+            (
+                $cmd eq MMSOMFY::Command::open_for_timer ||
+                $cmd eq MMSOMFY::Command::close_for_timer
+            )
+        {
+            $timerStopAfter = $cmdarg;
+            $cmd = ($cmd eq MMSOMFY::Command::open_for_timer)
+                ? MMSOMFY::Command::open
+                : MMSOMFY::Command::close;
+            $cmdarg = undef;
+        }
 
         # Validate timing attributes before movement
         unless (MMSOMFY::Timing::ValidateTimingAttributes($main::FHEM_Hash)) {
@@ -2776,17 +2915,90 @@ package MMSOMFY::DeviceModel;
             return;
         }
 
+        if ($cmd eq MMSOMFY::Command::go_my)
+        {
+            if ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::off)
+            {
+                main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Nothing to be done with command '$cmd' with timing '" . MMSOMFY::Timing::off . "'");
+                return;
+            }
+
+            my $myPosition = main::AttrVal($main::FHEM_Hash->{NAME}, MMSOMFY::Attribute::myPosition, undef);
+            unless (defined($myPosition) && $myPosition =~ /^\d*\.?\d+$/)
+            {
+                main::Log3($main::FHEM_Hash->{NAME}, 1, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Command go_my ignored because attribute myPosition is not set.");
+                return;
+            }
+
+            my $targetPosition = $myPosition;
+            if (main::AttrVal($main::FHEM_Hash->{NAME}, MMSOMFY::Attribute::positionInverse, 0) eq "1")
+            {
+                $targetPosition = MMSOMFY::Position::ENDPOS() - $targetPosition;
+            }
+
+            my $factor = main::ReadingsVal($main::FHEM_Hash->{NAME}, MMSOMFY::Reading::factor, undef);
+            unless (defined($factor) && $factor =~ /^\d*\.?\d+$/)
+            {
+                main::Log3($main::FHEM_Hash->{NAME}, 1, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Command go_my ignored because reading factor is missing.");
+                return;
+            }
+
+            my $targetFactor = $targetPosition / MMSOMFY::Position::ENDPOS();
+            my $delta = $targetFactor - $factor;
+
+            if (abs($delta) < 0.01)
+            {
+                main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Command go_my ignored because device is already near target position.");
+                return;
+            }
+
+            if ($delta < 0)
+            {
+                my $fullTime = MMSOMFY::Timing::Closed2Opened($main::FHEM_Hash);
+                unless (defined($fullTime) && $fullTime > 0)
+                {
+                    main::Log3($main::FHEM_Hash->{NAME}, 1, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Command go_my cannot be executed due to missing timing attributes.");
+                    return;
+                }
+
+                $timerStopAfter = abs($delta) * $fullTime;
+                $cmd = MMSOMFY::Command::open;
+            }
+            else
+            {
+                my $fullTime = MMSOMFY::Timing::Opened2Closed($main::FHEM_Hash);
+                unless (defined($fullTime) && $fullTime > 0)
+                {
+                    main::Log3($main::FHEM_Hash->{NAME}, 1, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Command go_my cannot be executed due to missing timing attributes.");
+                    return;
+                }
+
+                $timerStopAfter = abs($delta) * $fullTime;
+                $cmd = MMSOMFY::Command::close;
+            }
+
+            $timerStopAfter = sprintf("%.2f", $timerStopAfter);
+            main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): go_my -> '$cmd' for ${timerStopAfter}s");
+        }
+
         if ($cmd eq MMSOMFY::Command::open)
         {
-            if ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::off)
+            if ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::off)
             {
                 main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Set state to ". MMSOMFY::State::opened);
                 $main::FHEM_Hash->{STATE} = MMSOMFY::State::opened;
             }
-            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic || $main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::extended)
+            elsif ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::basic || $main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
             {
                 my $movement = main::ReadingsVal($main::FHEM_Hash->{NAME}, MMSOMFY::Reading::movement, undef);
                 my $factor = main::ReadingsVal($main::FHEM_Hash->{NAME}, MMSOMFY::Reading::factor, undef);
+
+                if (defined($timerStopAfter) && defined($main::FHEM_Hash->{SimulationKey}) && $movement eq MMSOMFY::Movement::up)
+                {
+                    $main::FHEM_Hash->{SimulationKey}{TimerStopTime} = main::gettimeofday() + $timerStopAfter;
+                    main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Updated timer-stop for current up movement to ${timerStopAfter}s");
+                    return;
+                }
 
                 if ($movement eq MMSOMFY::Movement::up || $factor eq 0.0)
                 {
@@ -2813,6 +3025,7 @@ package MMSOMFY::DeviceModel;
                     };
 
                     $main::FHEM_Hash->{SimulationKey}{Arguments} = $cmdarg if (defined($cmdarg));
+                    $main::FHEM_Hash->{SimulationKey}{TimerStopTime} = $startTime + $timerStopAfter if (defined($timerStopAfter));
 
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Start timer for moving up");
                     ScheduleNextTimerCallback($main::FHEM_Hash);
@@ -2821,15 +3034,22 @@ package MMSOMFY::DeviceModel;
         }
         elsif ($cmd eq MMSOMFY::Command::close)
         {
-            if ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::off)
+            if ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::off)
             {
                 main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Set state to ". MMSOMFY::State::closed);
                 $main::FHEM_Hash->{STATE} = MMSOMFY::State::closed;
             }
-            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic || $main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::extended)
+            elsif ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::basic || $main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
             {
                 my $movement = main::ReadingsVal($main::FHEM_Hash->{NAME}, MMSOMFY::Reading::movement, undef);
                 my $factor = main::ReadingsVal($main::FHEM_Hash->{NAME}, MMSOMFY::Reading::factor, undef);
+
+                if (defined($timerStopAfter) && defined($main::FHEM_Hash->{SimulationKey}) && $movement eq MMSOMFY::Movement::down)
+                {
+                    $main::FHEM_Hash->{SimulationKey}{TimerStopTime} = main::gettimeofday() + $timerStopAfter;
+                    main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Updated timer-stop for current down movement to ${timerStopAfter}s");
+                    return;
+                }
 
                 if ($movement eq MMSOMFY::Movement::down || $factor eq 1.0)
                 {
@@ -2856,30 +3076,20 @@ package MMSOMFY::DeviceModel;
                     };
 
                     $main::FHEM_Hash->{SimulationKey}{Arguments} = $cmdarg if (defined($cmdarg));
+                    $main::FHEM_Hash->{SimulationKey}{TimerStopTime} = $startTime + $timerStopAfter if (defined($timerStopAfter));
 
                     main::Log3($main::FHEM_Hash->{NAME}, 3, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Start timer for moving down");
                     ScheduleNextTimerCallback($main::FHEM_Hash);
                 }
             }
         }
-        elsif ($cmd eq MMSOMFY::Command::go_my)
-        {
-            if ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::off)
-            {
-                main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Nothing to be done with command '$cmd' with timing '" . MMSOMFY::Timing::off . "'");
-            }
-            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic)
-            {
-                main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Command go_my with timing basic");
-            }
-        }
         elsif ($cmd eq MMSOMFY::Command::stop)
         {
-            if ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::off)
+            if ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::off)
             {
                 main::Log3($main::FHEM_Hash->{NAME}, 5, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Nothing to be done with command '$cmd' with timing '" . MMSOMFY::Timing::off . "'");
             }
-            elsif ($main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::basic || $main::FHEM_Hash->{TIMING} eq MMSOMFY::Timing::extended)
+            elsif ($main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::basic || $main::FHEM_Hash->{MMSOMFY::Internal::TIMING} eq MMSOMFY::Timing::extended)
             {
                 if (defined($main::FHEM_Hash->{SimulationKey}))
                 {
@@ -2898,16 +3108,33 @@ package MMSOMFY::DeviceModel;
         main::Log3($main::FHEM_Hash->{NAME}, 4, "MMSOMFY::DeviceModel ($main::FHEM_Hash->{NAME}): Enter 'Calculate'");
         my ($mode, $cmd, $cmdarg) = @_;
 
-        # Handle calibration commands
-        if ($cmd eq MMSOMFY::Command::calibrate_basic) {
-            my $result = StartInteractiveCalibration($main::FHEM_Hash, 'basic');
+        # Handle calibration commands.
+        # FHEM UI interaction is command-based, therefore confirmation is done with calibrate_next.
+        if ($cmd eq MMSOMFY::Command::calibrate) {
+            my $timing = $main::FHEM_Hash->{MMSOMFY::Internal::TIMING};
+            my $requestedType = ($timing && $timing eq MMSOMFY::Timing::extended) ? 'extended' : 'basic';
+
+            if ($main::FHEM_Hash->{CalibrationMode}) {
+                my $activeType = $main::FHEM_Hash->{CalibrationData}{type};
+                return (undef, "Calibration '$activeType' is active. Use 'calibrate_next' to continue or 'calibrate_abort' to cancel.");
+            }
+
+            my $result = StartInteractiveCalibration($main::FHEM_Hash, $requestedType);
             return (undef, undef) if !defined($result);  # Success
             return (undef, $result);  # Error message
         }
-        elsif ($cmd eq MMSOMFY::Command::calibrate_extended) {
-            my $result = StartInteractiveCalibration($main::FHEM_Hash, 'extended');
-            return (undef, undef) if !defined($result);  # Success
-            return (undef, $result);  # Error message
+        elsif ($cmd eq MMSOMFY::Command::calibrate_next) {
+            return (undef, "No calibration is active. Start with 'calibrate'.")
+                unless $main::FHEM_Hash->{CalibrationMode};
+
+            HandleCalibrationInput($main::FHEM_Hash);
+            return (undef, undef);
+        }
+        elsif ($cmd eq MMSOMFY::Command::calibrate_abort) {
+            return (undef, "No calibration is active.") unless $main::FHEM_Hash->{CalibrationMode};
+
+            AbortCalibration($main::FHEM_Hash);
+            return (undef, undef);
         }
         elsif ($cmd eq MMSOMFY::Command::calibrate_verify) {
             VerifyCalibration($main::FHEM_Hash);
@@ -2946,6 +3173,24 @@ package MMSOMFY::DeviceModel;
         return ($cmd, $cmdarg);
     }
 
+    sub AbortCalibration($) {
+        my ($hash) = @_;
+
+        delete $hash->{CalibrationMode};
+        delete $hash->{CalibrationData};
+
+        MMSOMFY::Internal::SetCalibrationValues(
+            "aborted",
+            "done",
+            "Calibration aborted by user",
+            MMSOMFY::Command::calibrate,
+            $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+            $hash
+        );
+
+        main::Log3($hash->{NAME}, 1, "Calibration aborted by user.");
+    }
+
     # Interactive calibration for timing values
     sub StartInteractiveCalibration($$) {
         my ($hash, $calibrationType) = @_;
@@ -2961,7 +3206,8 @@ package MMSOMFY::DeviceModel;
             type => $calibrationType,
             step => 0,
             measurements => [],
-            startTime => undef
+            startTime => undef,
+            waitingForInput => 0,
         };
 
         main::Log3($hash->{NAME}, 2, "MMSOMFY::DeviceModel ($hash->{NAME}): Starting interactive calibration: $calibrationType");
@@ -3012,6 +3258,7 @@ package MMSOMFY::DeviceModel;
         }
 
         my $currentStep = $steps[$cal->{step}];
+        my $confirmCmd = MMSOMFY::Command::calibrate_next;
 
         # Log instruction for user
         main::Log3($hash->{NAME}, 1, "="x60);
@@ -3021,23 +3268,45 @@ package MMSOMFY::DeviceModel;
         main::Log3($hash->{NAME}, 1, "");
 
         if ($currentStep->{action} eq 'prepare_closed') {
-            # Just wait for user input
-            main::Log3($hash->{NAME}, 1, "Press ENTER when ready...");
+            # Wait for explicit UI confirmation via repeated set command.
+            main::Log3($hash->{NAME}, 1, "Confirm with: set $hash->{NAME} $confirmCmd");
             $cal->{waitingForInput} = 1;
+            MMSOMFY::Internal::SetCalibrationValues(
+                "waiting",
+                ($cal->{step} + 1),
+                $currentStep->{instruction},
+                $confirmCmd,
+                $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+                $hash
+            );
         } elsif ($currentStep->{action} eq 'measure_open') {
-            # Start open movement and wait for user input
+            # Start movement and wait for UI confirmation.
             main::Log3($hash->{NAME}, 1, "STARTING: Movement from CLOSED to OPEN...");
             $cal->{startTime} = time();
-            # Trigger actual hardware movement
-            MMSOMFY::DeviceModel::CalculateAwningShutter('open', undef);
+            MMSOMFY::Command::Send2Device(MMSOMFY::Command::open, undef);
             $cal->{waitingForInput} = 1;
+            MMSOMFY::Internal::SetCalibrationValues(
+                "measuring",
+                ($cal->{step} + 1),
+                $currentStep->{instruction},
+                $confirmCmd,
+                $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+                $hash
+            );
         } elsif ($currentStep->{action} eq 'measure_close') {
-            # Start close movement and wait for user input
+            # Start movement and wait for UI confirmation.
             main::Log3($hash->{NAME}, 1, "STARTING: Movement from OPEN to CLOSED...");
             $cal->{startTime} = time();
-            # Trigger actual hardware movement
-            MMSOMFY::DeviceModel::CalculateAwningShutter('close', undef);
+            MMSOMFY::Command::Send2Device(MMSOMFY::Command::close, undef);
             $cal->{waitingForInput} = 1;
+            MMSOMFY::Internal::SetCalibrationValues(
+                "measuring",
+                ($cal->{step} + 1),
+                $currentStep->{instruction},
+                $confirmCmd,
+                $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+                $hash
+            );
         }
     }
 
@@ -3078,6 +3347,7 @@ package MMSOMFY::DeviceModel;
         }
 
         my $currentStep = $steps[$cal->{step}];
+        my $confirmCmd = MMSOMFY::Command::calibrate_next;
 
         main::Log3($hash->{NAME}, 1, "="x60);
         main::Log3($hash->{NAME}, 1, "EXTENDED SHUTTER CALIBRATION - Step " . ($cal->{step} + 1) . "/" . scalar(@steps));
@@ -3086,28 +3356,68 @@ package MMSOMFY::DeviceModel;
         main::Log3($hash->{NAME}, 1, "");
 
         if ($currentStep->{action} eq 'prepare_closed') {
-            main::Log3($hash->{NAME}, 1, "Press ENTER when ready...");
+            main::Log3($hash->{NAME}, 1, "Confirm with: set $hash->{NAME} $confirmCmd");
             $cal->{waitingForInput} = 1;
+            MMSOMFY::Internal::SetCalibrationValues(
+                "waiting",
+                ($cal->{step} + 1),
+                $currentStep->{instruction},
+                $confirmCmd,
+                $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+                $hash
+            );
         } elsif ($currentStep->{action} eq 'measure_to_down') {
             main::Log3($hash->{NAME}, 1, "STARTING: Movement from CLOSED to OPEN...");
             $cal->{startTime} = time();
-            MMSOMFY::DeviceModel::CalculateAwningShutter('open', undef);
+            MMSOMFY::Command::Send2Device(MMSOMFY::Command::open, undef);
             $cal->{waitingForInput} = 1;
+            MMSOMFY::Internal::SetCalibrationValues(
+                "measuring",
+                ($cal->{step} + 1),
+                $currentStep->{instruction},
+                $confirmCmd,
+                $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+                $hash
+            );
         } elsif ($currentStep->{action} eq 'measure_down_to_open') {
             main::Log3($hash->{NAME}, 1, "STARTING: Movement from DOWN to OPEN...");
             $cal->{startTime} = time();
-            MMSOMFY::DeviceModel::CalculateAwningShutter('open', undef);
+            MMSOMFY::Command::Send2Device(MMSOMFY::Command::open, undef);
             $cal->{waitingForInput} = 1;
+            MMSOMFY::Internal::SetCalibrationValues(
+                "measuring",
+                ($cal->{step} + 1),
+                $currentStep->{instruction},
+                $confirmCmd,
+                $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+                $hash
+            );
         } elsif ($currentStep->{action} eq 'measure_to_down_reverse') {
             main::Log3($hash->{NAME}, 1, "STARTING: Movement from OPEN to CLOSED...");
             $cal->{startTime} = time();
-            MMSOMFY::DeviceModel::CalculateAwningShutter('close', undef);
+            MMSOMFY::Command::Send2Device(MMSOMFY::Command::close, undef);
             $cal->{waitingForInput} = 1;
+            MMSOMFY::Internal::SetCalibrationValues(
+                "measuring",
+                ($cal->{step} + 1),
+                $currentStep->{instruction},
+                $confirmCmd,
+                $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+                $hash
+            );
         } elsif ($currentStep->{action} eq 'measure_down_to_closed') {
             main::Log3($hash->{NAME}, 1, "STARTING: Movement from DOWN to CLOSED...");
             $cal->{startTime} = time();
-            MMSOMFY::DeviceModel::CalculateAwningShutter('close', undef);
+            MMSOMFY::Command::Send2Device(MMSOMFY::Command::close, undef);
             $cal->{waitingForInput} = 1;
+            MMSOMFY::Internal::SetCalibrationValues(
+                "measuring",
+                ($cal->{step} + 1),
+                $currentStep->{instruction},
+                $confirmCmd,
+                $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+                $hash
+            );
         }
     }
 
@@ -3122,6 +3432,10 @@ package MMSOMFY::DeviceModel;
             # Record measurement
             my $elapsed = time() - $cal->{startTime};
             push @{$cal->{measurements}}, $elapsed;
+
+            # Stop movement at the user-confirmed point.
+            MMSOMFY::Command::Send2Device(MMSOMFY::Command::stop, undef);
+            $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT} = sprintf("%.2f", $elapsed);
 
             main::Log3($hash->{NAME}, 1, sprintf("Measured time: %.2f seconds", $elapsed));
         }
@@ -3159,6 +3473,14 @@ package MMSOMFY::DeviceModel;
         # Cleanup
         delete $hash->{CalibrationMode};
         delete $hash->{CalibrationData};
+        MMSOMFY::Internal::SetCalibrationValues(
+            "completed",
+            "done",
+            "Basic calibration finished",
+            MMSOMFY::Command::calibrate,
+            $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+            $hash
+        );
     }
 
     sub CompleteExtendedCalibration($) {
@@ -3198,6 +3520,14 @@ package MMSOMFY::DeviceModel;
         # Cleanup
         delete $hash->{CalibrationMode};
         delete $hash->{CalibrationData};
+        MMSOMFY::Internal::SetCalibrationValues(
+            "completed",
+            "done",
+            "Extended calibration finished",
+            MMSOMFY::Command::calibrate,
+            $hash->{MMSOMFY::Internal::CALIBRATION_LAST_MEASUREMENT},
+            $hash
+        );
     }
 
     sub VerifyCalibration($) {
@@ -3218,6 +3548,9 @@ package MMSOMFY::DeviceModel;
     sub ResetCalibrationData($) {
         my $hash = shift;
 
+        delete $hash->{CalibrationMode};
+        delete $hash->{CalibrationData};
+
         # Reset calibration attributes
         delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::calibrationMode};
         delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::calibrationQuality};
@@ -3229,6 +3562,8 @@ package MMSOMFY::DeviceModel;
         delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToClosed};
         delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeDownToOpened};
         delete $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::driveTimeOpenedToDown};
+
+        MMSOMFY::Internal::ClearCalibrationValues($hash);
 
         main::Log3($hash->{NAME}, 1, "Calibration data and timing attributes have been reset.");
     }
@@ -3246,6 +3581,7 @@ use Scalar::Util qw(looks_like_number);
 use Data::Dumper;
 
 our $FHEM_Hash;
+our (%defs, %attr, %modules, $init_done, $readingFnAttributes);
 
 my %somfy_codes2cmd = (
     "10" => "go_my",            # goto "my" position
@@ -3787,11 +4123,21 @@ sub MMSOMFY_Set($@) {
     wind_sun_9        Send wind/sun detector code (sun + flag)
     wind_only_a       Send wind-only detector code (flag only)
     z_custom          Send custom RF code (advanced usage)
-    calibrate_basic   Start interactive basic timing calibration (2 timings)
-    calibrate_extended Start interactive extended timing calibration (4 timings)
+    calibrate         Start interactive calibration (basic/extended depends on timing)
+    calibrate_next    Confirm the next interactive calibration step
+    calibrate_abort   Abort the active interactive calibration
     calibrate_verify  Verify calibration accuracy with test movements
     calibrate_reset   Reset all calibration data and timing attributes
     </pre>
+
+    <b>Calibration mode selection:</b> If timing is <code>extended</code>, extended calibration
+    is used automatically; otherwise basic calibration is used.
+    <br><br>
+
+    During interactive calibration in FHEMWEB, confirm each step with
+    <code>set &lt;name&gt; calibrate_next</code>. Cancel with
+    <code>set &lt;name&gt; calibrate_abort</code>. Progress is exposed via calibration*
+    internals on the device detail page.
 
     <b>SetExtensions (if eventMap/webCmd configured):</b><br>
     <pre>
@@ -3846,8 +4192,8 @@ sub MMSOMFY_Set($@) {
     </li>
 
     <li><b>positionInverse</b> (0 or 1, default: 0)<br>
-        Inverts position values. When enabled: 0=closed, 100=down, 200=open (opposite of normal).
-        The position set command will use reversed values accordingly.
+        Inverts position values. When enabled: 0=closed and 100=open (opposite of normal).
+        This affects displayed/target position semantics only.
         <b>Note:</b> This does NOT invert the direction of on/open/close commands - they always 
         move in the same logical direction.
         <br><br>
@@ -3881,7 +4227,7 @@ sub MMSOMFY_Set($@) {
         <br><br>
     </li>
 
-    <li><b>myPosition</b> (0..200 or 0..100)<br>
+    <li><b>myPosition</b> (0..100)<br>
         The target position for the "go_my" (favorite/memory) command. 
         When the device receives a "go_my" command, it will move to this position.
         Default is typically 95 (partially closed).
@@ -4031,3 +4377,4 @@ sub MMSOMFY_Set($@) {
 
 =end html
 =cut
+
