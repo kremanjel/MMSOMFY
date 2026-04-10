@@ -335,8 +335,7 @@ package MMSOMFY::Attribute;
         driveTimeOpenedToClosed => 'driveTimeOpenedToClosed',
         driveTimeDownToOpened => 'driveTimeDownToOpened',
         driveTimeClosedToOpened => 'driveTimeClosedToOpened',
-        positionInverse => 'positionInverse',
-        myPosition => 'myPosition',
+                myPosition => 'myPosition',
         symbolLength => 'symbolLength',
         repetition => 'repetition',
         fixedEnckey => 'fixedEnckey',
@@ -430,8 +429,7 @@ package MMSOMFY::Attribute;
             driveTimeOpenedToClosed => "",
             driveTimeDownToOpened => "",
             driveTimeClosedToOpened => "",
-            positionInverse => ":0,1",
-            myPosition => "",
+                        myPosition => "",
             symbolLength => "",
             repetition => "",
             fixedEnckey => ":1,0",
@@ -493,8 +491,7 @@ package MMSOMFY::Attribute;
                             ($name eq MMSOMFY::Attribute::driveTimeOpenedToClosed) ||
                             ($name eq MMSOMFY::Attribute::driveTimeDownToOpened) ||
                             ($name eq MMSOMFY::Attribute::driveTimeClosedToOpened) ||
-                            ($name eq MMSOMFY::Attribute::positionInverse) ||
-                            ($name eq MMSOMFY::Attribute::myPosition)
+                                                        ($name eq MMSOMFY::Attribute::myPosition)
                         )
                     )
                 )
@@ -690,28 +687,7 @@ package MMSOMFY::Attribute;
                     }
                 }
             }
-            elsif ($attrName eq MMSOMFY::Attribute::positionInverse)
-            {
-                if ($cmd eq "set")
-                {
-                    if
-                        (
-                            ($hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::shutter) ||
-                            ($hash->{MMSOMFY::Internal::MODEL} eq MMSOMFY::Model::awning)
-                        )
-                    {
-                        if ($attrValue !~ /^(0|1)$/)
-                        {
-                            $retval = "MMSOMFY::Attribute::CheckAttribute ($hash->{NAME}): Value for $attrName must be 0 or 1.";
-                        }
-                    }
-                    else
-                    {
-                        $retval = "MMSOMFY::Attribute::CheckAttribute ($hash->{NAME}): Error - Attribute $attrName is supported for " . MMSOMFY::Internal::MODEL . " " . MMSOMFY::Model::shutter . " and " . MMSOMFY::Model::awning . " only.";
-                    }
-                }
-            }
-            # for remotes only
+                        # for remotes only
             elsif ($attrName eq MMSOMFY::Attribute::ignore)
             {
                 # ...  preset state to receving ...
@@ -1297,11 +1273,6 @@ package MMSOMFY::Reading;
 
         my $name = $hash->{NAME};
         my $positionFactor = $factor;
-
-        if (main::AttrVal($name, MMSOMFY::Attribute::positionInverse, 0) eq "1")
-        {
-            $positionFactor = 1 - $positionFactor;
-        }
 
         $positionFactor = 0 if $positionFactor < 0;
         $positionFactor = 1 if $positionFactor > 1;
@@ -4191,14 +4162,6 @@ sub MMSOMFY_Set($@) {
         <br><br>
     </li>
 
-    <li><b>positionInverse</b> (0 or 1, default: 0)<br>
-        Inverts position values. When enabled: 0=closed and 100=open (opposite of normal).
-        This affects displayed/target position semantics only.
-        <b>Note:</b> This does NOT invert the direction of on/open/close commands - they always 
-        move in the same logical direction.
-        <br><br>
-    </li>
-
     <li><b>driveTimeOpenedToDown</b> (seconds, e.g. "12" or "12.5")<br>
         Time in seconds the shutter needs to move from fully open (position 0) down to 
         the "down" position (position 100). For a typical window, this is about 12-15 seconds.
@@ -4368,6 +4331,20 @@ sub MMSOMFY_Set($@) {
     
     <li><b>Multiple Devices:</b> You can control multiple Somfy devices independently by 
     creating separate MMSOMFY device definitions with different addresses.</li>
+
+        <li><b>Migration from original SOMFY module:</b> The original attributes
+        <code>positionInverse</code> and <code>additionalPosReading</code> are intentionally not
+        implemented in MMSOMFY. Both are display/derived-reading concerns and can be
+        implemented by users with <code>userReadings</code> without hardwiring these variants
+        into the module itself.</li>
+
+        <li><b>Replacement examples with userReadings:</b><br>
+            Inverse position display (replacement for <code>positionInverse</code>):<br>
+            <code>attr &lt;name&gt; userReadings position_inverted:position.* { 100-ReadingsNum($name,"position",0) }</code><br>
+            Additional/custom position reading (replacement for <code>additionalPosReading</code>):<br>
+            <code>attr &lt;name&gt; userReadings position_custom:position.* { sprintf("%.0f", ReadingsNum($name,"position",0)) }</code><br>
+            See <a href="#userReadings">userReadings</a> in commandref for trigger syntax and
+            more advanced formulas.</li>
     
     <li><b>Still in Development:</b> This module is actively being developed. Some features 
     may be incomplete or subject to change.</li>

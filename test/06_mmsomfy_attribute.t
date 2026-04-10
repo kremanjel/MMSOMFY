@@ -25,21 +25,6 @@ subtest 'myPosition validation and normalization' => sub {
 };
 
 # Test Description:
-# - What: Validates positionInverse value domain.
-# - How: Calls CheckAttribute with accepted and rejected values.
-# - Steps: Tests 2 as invalid and 1 as valid input.
-# - Expectation: Only 0/1 are accepted.
-subtest 'positionInverse validation' => sub {
-    my $hash = MMSOMFY::TestHelper::make_device(name => 'attr_inverse');
-
-    my $err = MMSOMFY::Attribute::CheckAttribute('set', MMSOMFY::Attribute::positionInverse(), 2, 1, $hash);
-    like($err, qr/must be 0 or 1/, 'positionInverse only accepts 0 or 1');
-
-    $err = MMSOMFY::Attribute::CheckAttribute('set', MMSOMFY::Attribute::positionInverse(), 1, 1, $hash);
-    is($err, undef, 'positionInverse accepts 1 for shutter devices');
-};
-
-# Test Description:
 # - What: Validates model restrictions for myPosition.
 # - How: Evaluates myPosition on a remote model.
 # - Steps: Calls CheckAttribute with remote hash and numeric value.

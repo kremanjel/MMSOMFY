@@ -22,20 +22,6 @@ subtest 'PositionUpdate stores factor, position and movement' => sub {
     is($hash->{READINGS}{movement}{VAL}, MMSOMFY::Movement::up(), 'movement reading is updated');
 };
 
-# Test Description:
-# - What: Validates PositionUpdate with position inversion enabled.
-# - How: Sets positionInverse attribute and updates with fixed factor.
-# - Steps: Calls PositionUpdate and inspects resulting position reading.
-# - Expectation: Position is mirrored against the 0..100 range.
-subtest 'PositionUpdate respects positionInverse' => sub {
-    my $hash = MMSOMFY::TestHelper::make_device(name => 'reading_inverse');
-    $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::positionInverse()} = 1;
-
-    MMSOMFY::Reading::PositionUpdate(0.25, MMSOMFY::Movement::down(), $hash);
-
-    is($hash->{READINGS}{position}{VAL}, 75, 'position is mirrored when positionInverse is enabled');
-};
-
 done_testing;
 
 
