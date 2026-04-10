@@ -2249,63 +2249,6 @@ package MMSOMFY::DeviceModel;
         return UpdateFrequency;
     }
 
-    # Validate timing attributes for consistency
-    sub ValidateTimingAttributes($) {
-        my $hash = shift;
-        my $timing = $hash->{MMSOMFY::Internal::TIMING};
-
-        return 1 if $timing eq MMSOMFY::Timing::off;  # No validation needed for off
-
-        my @errors;
-
-        # Get all timing values
-        my $closedToOpened = MMSOMFY::Timing::Closed2Opened($hash);
-        my $openedToClosed = MMSOMFY::Timing::Opened2Closed($hash);
-
-        # Basic validation for all timing modes
-        if ($timing ne MMSOMFY::Timing::off) {
-            push @errors, "driveTimeClosedToOpened must be > 0" unless $closedToOpened && $closedToOpened > 0;
-            push @errors, "driveTimeOpenedToClosed must be > 0" unless $openedToClosed && $openedToClosed > 0;
-        }
-
-        # Extended timing specific validations
-        if ($timing eq MMSOMFY::Timing::extended) {
-            my $downToOpened = MMSOMFY::Timing::Down2Opened($hash);
-            my $openedToDown = MMSOMFY::Timing::Opened2Down($hash);
-            my $closedToDown = MMSOMFY::Timing::Closed2Down($hash);
-            my $downToClosed = MMSOMFY::Timing::Down2Closed($hash);
-
-            push @errors, "driveTimeDownToOpened must be > 0" unless $downToOpened && $downToOpened > 0;
-            push @errors, "driveTimeOpenedToDown must be > 0" unless $openedToDown && $openedToDown > 0;
-
-            # Logical consistency checks
-            if ($closedToDown && $downToOpened && $closedToOpened) {
-                my $calculatedTotal = $closedToDown + $downToOpened;
-                my $tolerance = 0.5; # Allow 0.5s tolerance for measurement inaccuracies
-                push @errors, sprintf("ClosedToOpened timing mismatch: configured=%.1fs, calculated=%.1fs",
-                    $closedToOpened, $calculatedTotal)
-                    if abs($closedToOpened - $calculatedTotal) > $tolerance;
-            }
-
-            if ($openedToDown && $downToClosed && $openedToClosed) {
-                my $calculatedTotal = $openedToDown + $downToClosed;
-                my $tolerance = 0.5;
-                push @errors, sprintf("OpenedToClosed timing mismatch: configured=%.1fs, calculated=%.1fs",
-                    $openedToClosed, $calculatedTotal)
-                    if abs($openedToClosed - $calculatedTotal) > $tolerance;
-            }
-        }
-
-        if (@errors) {
-            main::Log3($hash->{NAME}, 1, "TIMING VALIDATION ERRORS:");
-            main::Log3($hash->{NAME}, 1, "  - $_") foreach @errors;
-            main::Log3($hash->{NAME}, 1, "Please check and correct timing attributes.");
-            return 0; # Validation failed
-        }
-
-        return 1; # Validation passed
-    }
-
     # Helper function to schedule next timer callback with adaptive frequency
     sub ScheduleNextTimerCallback($) {
         my $hash = shift;
