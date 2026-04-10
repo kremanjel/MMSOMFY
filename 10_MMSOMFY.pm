@@ -2240,11 +2240,6 @@ package MMSOMFY::DeviceModel;
     use constant SimulationKey => "MovementSimulation";
     use constant UpdateFrequency => 0.25;  # Keep simulation responsive without overloading the FHEM event loop
 
-    sub UpdateInterval($) {
-        my ($remainingTime) = @_;
-        return $remainingTime > UpdateFrequency ? UpdateFrequency : $remainingTime;
-    }
-
     sub GetAdaptiveUpdateFrequency($)
     {
         my ($remainingTime) = @_;

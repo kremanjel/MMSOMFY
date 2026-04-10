@@ -89,15 +89,12 @@ subtest 'calibration reset clears calibration and timing attributes' => sub {
 };
 
 # Test Description:
-# - What: Validates update interval helper thresholds.
-# - How: Calls UpdateInterval and GetAdaptiveUpdateFrequency with test values.
+# - What: Validates adaptive update frequency helper thresholds.
+# - How: Calls GetAdaptiveUpdateFrequency with representative remaining times.
 # - Steps: Compares return values against expected frequency bands.
 # - Expectation: Adaptive frequency policy is applied deterministically.
 subtest 'update frequency helpers select expected intervals' => sub {
-    is(MMSOMFY::DeviceModel::UpdateInterval(0.05), 0.05, 'interval keeps remaining time below update frequency');
-    is(MMSOMFY::DeviceModel::UpdateInterval(1.0), MMSOMFY::DeviceModel::UpdateFrequency(), 'interval is capped by update frequency');
-
-    is(MMSOMFY::DeviceModel::GetAdaptiveUpdateFrequency(0.2), 0.10, 'very short remaining time uses fastest update');
+        is(MMSOMFY::DeviceModel::GetAdaptiveUpdateFrequency(0.2), 0.10, 'very short remaining time uses fastest update');
     is(MMSOMFY::DeviceModel::GetAdaptiveUpdateFrequency(2), 0.20, 'short remaining time uses medium update');
     is(MMSOMFY::DeviceModel::GetAdaptiveUpdateFrequency(20), MMSOMFY::DeviceModel::UpdateFrequency(), 'long remaining time uses default update');
 };
