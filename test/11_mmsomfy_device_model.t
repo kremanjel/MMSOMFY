@@ -147,7 +147,7 @@ subtest 'TimerCallback handles negative and excessive elapsed times' => sub {
 
     $hash->{SimulationKey} = {
         Command => MMSOMFY::Command::close(),
-        StartTime => main::gettimeofday() - 301,
+        StartTime => main::gettimeofday() - (MMSOMFY::Timing::MovementTimeoutSeconds() + 1),
         StartFactor => 0.5,
     };
     MMSOMFY::DeviceModel::TimerCallback($hash);

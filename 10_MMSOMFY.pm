@@ -1113,6 +1113,12 @@ package MMSOMFY::Timing;
         return $retval;
     }
 
+    # Get movement timeout threshold in seconds.
+    # Used for safety checks in timer callbacks to prevent runaway simulations.
+    sub MovementTimeoutSeconds() {
+        return 300;
+    }
+
 1;
 
 ################################################################################
@@ -2662,8 +2668,8 @@ package MMSOMFY::DeviceModel;
                     return;
                 }
 
-                if ($dt > 300) {  # 5 minutes timeout
-                    main::Log3($hash->{NAME}, 1, "ERROR: Movement timeout (5 minutes). Stopping simulation.");
+                if ($dt > MMSOMFY::Timing::MovementTimeoutSeconds()) {
+                    main::Log3($hash->{NAME}, 1, "ERROR: Movement timeout (" . MMSOMFY::Timing::MovementTimeoutSeconds() . " seconds). Stopping simulation.");
                     delete $hash->{SimulationKey};
                     MMSOMFY::Reading::PositionUpdate($factor, MMSOMFY::Movement::none, $hash);
                     return;
