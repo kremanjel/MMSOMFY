@@ -8,15 +8,19 @@ MMSOMFY::TestHelper::load_module();
 
 # Test Description:
 # - What: Validates constants in package MMSOMFY::State.
-# - How: Checks representative fixed values and enum serialization.
-# - Steps: Read opened/closed/on/off and inspect ToString content.
-# - Expectation: State constants stay backward compatible.
+# - How: Checks all public accessors and deterministic enum serialization.
+# - Steps: Read every state constant and inspect ToString output.
+# - Expectation: Stable API values and deterministic enum string.
 subtest 'state constants and list' => sub {
+    is(MMSOMFY::State::disabled(), 'disabled', 'disabled constant is stable');
     is(MMSOMFY::State::opened(), 'opened', 'opened constant is stable');
     is(MMSOMFY::State::closed(), 'closed', 'closed constant is stable');
-    is(MMSOMFY::State::on(), 'on', 'on constant is stable');
+    is(MMSOMFY::State::ignored(), 'ignored', 'ignored constant is stable');
     is(MMSOMFY::State::off(), 'off', 'off constant is stable');
-    like(MMSOMFY::State::ToString(','), qr/receiving/, 'state list contains receiving');
+    is(MMSOMFY::State::on(), 'on', 'on constant is stable');
+    is(MMSOMFY::State::receiving(), 'receiving', 'receiving constant is stable');
+    is(MMSOMFY::State::unknown(), 'unknown', 'unknown constant is stable');
+    is(MMSOMFY::State::ToString(','), 'closed,disabled,ignored,off,on,opened,receiving,unknown', 'state list is serialized');
 };
 
 done_testing;

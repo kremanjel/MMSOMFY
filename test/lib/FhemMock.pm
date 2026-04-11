@@ -103,6 +103,7 @@ sub FhemMock_Init {
     };
 
     *CallFn = sub { return undef; };
+    *CommandSave = sub { return undef; };
     *setKeyValue = sub {
         my ($key, $value) = @_;
         $FHEM_MOCK_KEYSTORE{$key} = $value;

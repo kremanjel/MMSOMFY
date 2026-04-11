@@ -8,13 +8,15 @@ MMSOMFY::TestHelper::load_module();
 
 # Test Description:
 # - What: Validates constants in package MMSOMFY::Movement.
-# - How: Compares fixed accessor values and checks list content.
-# - Steps: Read none/up and inspect ToString output.
-# - Expectation: Known movement values stay stable and include go_my.
+# - How: Compares all public accessors and checks deterministic serialization.
+# - Steps: Read none/go_my/up/down and inspect ToString output.
+# - Expectation: Stable API values and deterministic enum string.
 subtest 'movement constants and list' => sub {
     is(MMSOMFY::Movement::none(), 'none', 'none constant is stable');
+    is(MMSOMFY::Movement::go_my(), 'go_my', 'go_my constant is stable');
     is(MMSOMFY::Movement::up(), 'up', 'up constant is stable');
-    like(MMSOMFY::Movement::ToString(' '), qr/\bgo_my\b/, 'movement list contains go_my');
+    is(MMSOMFY::Movement::down(), 'down', 'down constant is stable');
+    is(MMSOMFY::Movement::ToString(','), 'down,go_my,none,up', 'movement list is serialized');
 };
 
 done_testing;
