@@ -192,7 +192,7 @@ subtest 'check keeps calibration untouched while normalizing stop semantics' => 
     my $ret = MMSOMFY::Command::Check($mode, $cmd, $cmdarg);
     is($ret, undef, 'send stop during calibration returns no error');
     ok(defined($hash->{CalibrationData}), 'send stop does not abort calibration in Check');
-    ok(!defined($cmd), 'send stop without movement is cleared by Check');
+    ok(defined($cmd), 'send stop passes through Check when calibration is active (so Calculate can abort)');
 
     $hash->{CalibrationData} = { type => 'basic', step => 1, waitingForInput => 1 };
     $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::myPosition()} = 20;

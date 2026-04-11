@@ -83,7 +83,7 @@ subtest 'calculate aborts calibration for stop and position' => sub {
         movement => MMSOMFY::Movement::down(),
     );
     $main::FHEM_Hash = $hash_stop;
-    $hash_stop->{CalibrationData} = { type => 'basic', step => 1, waitingForInput => 1 };
+    $hash_stop->{CalibrationData} = { type => 'basic', step => 3, waitingForInput => 1, startTime => main::gettimeofday() - 5 };
     $hash_stop->{SimulationKey} = {
         StartTime => main::gettimeofday() - 1,
         StartFactor => 0.4,
@@ -495,6 +495,63 @@ subtest 'awning shutter path rejects unknown commands' => sub {
     like($ret, qr/Unknown command 'unsupported_command'/, 'unknown command returns explicit error');
     ok(!defined($cmd), 'unknown command clears command');
     ok(!defined($cmdarg), 'unknown command clears command argument');
+};
+
+# Test Description:
+# - What: Validates that calibration start restricts UI to stop and calibrate_next.
+# - How: Calls StartInteractiveCalibration and checks webCmd/cmdIcon modification.
+# - Steps: Verifies original attributes are saved in CalibrationData for later restoration.
+# - Expectation: webCmd and cmdIcon are adjusted for calibration UI during active calibration.
+subtest 'calibration start restricts webCmd and cmdIcon for calibration UI' => sub {
+    my $hash = MMSOMFY::TestHelper::make_device(
+        name => 'dev_calibration_ui_restrict',
+        timing => MMSOMFY::Timing::basic(),
+    );
+
+    # Initialize original webCmd and cmdIcon (as set by Initialize function)
+    $main::attr{$hash->{NAME}}{webCmd} = "open:close";
+    $main::attr{$hash->{NAME}}{cmdIcon} = "open:control_centr_arrow_up close:control_centr_arrow_down";
+
+    is($main::attr{$hash->{NAME}}{webCmd}, 'open:close', 'original webCmd is open:close');
+    like($main::attr{$hash->{NAME}}{cmdIcon}, qr/open:control_centr_arrow_up/, 'original cmdIcon contains open arrow');
+
+    MMSOMFY::DeviceModel::StartInteractiveCalibration($hash, 'basic');
+
+    # During calibration, webCmd and cmdIcon should be restricted
+    is($main::attr{$hash->{NAME}}{webCmd}, 'stop:calibrate_next', 'webCmd restricted to stop:calibrate_next during calibration');
+    is($main::attr{$hash->{NAME}}{cmdIcon}, 'stop:rc_STOP calibrate_next:Next', 'cmdIcon set to stop/next during calibration');
+
+    # Original values should be saved in CalibrationData
+    is($hash->{CalibrationData}{originalWebCmd}, 'open:close', 'original webCmd saved in CalibrationData');
+    like($hash->{CalibrationData}{originalCmdIcon}, qr/open:control_centr_arrow_up/, 'original cmdIcon saved in CalibrationData');
+};
+
+# Test Description:
+# - What: Validates that aborting calibration restores original webCmd and cmdIcon.
+# - How: Starts calibration, then aborts and checks attribute restoration.
+# - Steps: Confirms original attributes are restored from CalibrationData.
+# - Expectation: webCmd and cmdIcon return to their pre-calibration values after abort.
+subtest 'calibration abort restores original webCmd and cmdIcon' => sub {
+    my $hash = MMSOMFY::TestHelper::make_device(
+        name => 'dev_calibration_ui_abort',
+        timing => MMSOMFY::Timing::basic(),
+    );
+
+    # Initialize original webCmd and cmdIcon
+    $main::attr{$hash->{NAME}}{webCmd} = "open:close";
+    $main::attr{$hash->{NAME}}{cmdIcon} = "open:control_centr_arrow_up close:control_centr_arrow_down";
+
+    my $originalWebCmd = $main::attr{$hash->{NAME}}{webCmd};
+    my $originalCmdIcon = $main::attr{$hash->{NAME}}{cmdIcon};
+
+    MMSOMFY::DeviceModel::StartInteractiveCalibration($hash, 'basic');
+    is($main::attr{$hash->{NAME}}{webCmd}, 'stop:calibrate_next', 'webCmd restricted after start');
+
+    MMSOMFY::DeviceModel::AbortCalibration($hash);
+
+    is($main::attr{$hash->{NAME}}{webCmd}, $originalWebCmd, 'webCmd restored after abort');
+    is($main::attr{$hash->{NAME}}{cmdIcon}, $originalCmdIcon, 'cmdIcon restored after abort');
+    ok(!defined($hash->{CalibrationData}), 'CalibrationData cleared after abort');
 };
 
 done_testing;

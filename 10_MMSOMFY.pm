@@ -325,10 +325,6 @@ package MMSOMFY::Attribute;
         devStateIcon => 'devStateIcon',
         cmdIcon => 'cmdIcon',
         stateFormat => 'stateFormat',
-        calibrationMode => 'calibrationMode',
-        calibrationQuality => 'calibrationQuality',
-        lastCalibration => 'lastCalibration',
-        calibrationHistory => 'calibrationHistory',
     };
 
     sub Clear(;$) {
@@ -1677,10 +1673,14 @@ package MMSOMFY::Command;
                 }
                 elsif (!$isMoving)
                 {
-                    # Send stop without movement is ignored by design.
-                    $_[1] = undef;
-                    $_[2] = undef;
-                    main::Log3($name, 3, "MMSOMFY::Command::Check ($name): Command '" . MMSOMFY::Command::stop . "' ignored as device is not moving");
+                    # During calibration, stop aborts calibration regardless of movement state.
+                    unless (defined($main::FHEM_Hash->{CalibrationData}))
+                    {
+                        # Send stop without movement is ignored by design.
+                        $_[1] = undef;
+                        $_[2] = undef;
+                        main::Log3($name, 3, "MMSOMFY::Command::Check ($name): Command '" . MMSOMFY::Command::stop . "' ignored as device is not moving");
+                    }
                 }
             }
             # for cmd manual ...
@@ -2951,6 +2951,18 @@ package MMSOMFY::DeviceModel;
             )
         {
             AbortCalibration($main::FHEM_Hash);
+
+            if ($cmd eq MMSOMFY::Command::stop)
+            {
+                # During calibration we never send stop RF. Without reliable timing state
+                # this can trigger Somfy "my" behavior on idle devices.
+                # Still run local stop handling to cancel active simulation state.
+                _HandleAwningShutterStopCommand($cmd);
+                $_[0] = undef;
+                $_[1] = undef;
+                return undef;
+            }
+            # For position: continue so the user can navigate after aborting.
         }
 
         ($cmd, $cmdarg, $timerStopAfter) = _NormalizeAwningShutterTimerCommands($cmd, $cmdarg, $timerStopAfter);
@@ -3045,10 +3057,43 @@ package MMSOMFY::DeviceModel;
         return $retval;
     }
 
+    sub RestoreWebCmdAfterCalibration($) {
+        my ($hash) = @_;
+        return unless defined($hash->{CalibrationData});
+
+        my $originalWebCmd = $hash->{CalibrationData}{originalWebCmd};
+        my $originalCmdIcon = $hash->{CalibrationData}{originalCmdIcon};
+
+        if (defined($originalWebCmd))
+        {
+            $main::attr{$hash->{NAME}}{webCmd} = $originalWebCmd;
+        }
+        else
+        {
+            delete $main::attr{$hash->{NAME}}{webCmd};
+        }
+
+        if (defined($originalCmdIcon))
+        {
+            $main::attr{$hash->{NAME}}{cmdIcon} = $originalCmdIcon;
+        }
+        else
+        {
+            delete $main::attr{$hash->{NAME}}{cmdIcon};
+        }
+
+        main::Log3($hash->{NAME}, 5, "MMSOMFY::DeviceModel ($hash->{NAME}): Calibration UI restored to original webCmd/cmdIcon");
+    }
+
     sub AbortCalibration($) {
         my ($hash) = @_;
 
+        RestoreWebCmdAfterCalibration($hash);
         delete $hash->{CalibrationData};
+
+        # Force FHEMWEB refresh now that CalibrationData is deleted so Command::ToString
+        # returns the normal (non-calibration) command list.
+        main::FW_directNotify("#FHEMWEB:WEB", "location.reload()", "");
 
         MMSOMFY::Reading::SetCalibrationValues(
             "aborted",
@@ -3066,6 +3111,10 @@ package MMSOMFY::DeviceModel;
     sub StartInteractiveCalibration($$) {
         my ($hash, $calibrationType) = @_;
 
+        # Save original webCmd and cmdIcon for restoration after calibration
+        my $originalWebCmd = main::AttrVal($hash->{NAME}, "webCmd", undef);
+        my $originalCmdIcon = main::AttrVal($hash->{NAME}, "cmdIcon", undef);
+
         # Initialize calibration data
         $hash->{CalibrationData} = {
             type => $calibrationType,
@@ -3073,9 +3122,16 @@ package MMSOMFY::DeviceModel;
             measurements => [],
             startTime => undef,
             waitingForInput => 0,
+            originalWebCmd => $originalWebCmd,
+            originalCmdIcon => $originalCmdIcon,
         };
 
+        # During calibration, restrict UI to stop and calibrate_next only
+        $main::attr{$hash->{NAME}}{webCmd} = "stop:calibrate_next";
+        $main::attr{$hash->{NAME}}{cmdIcon} = "stop:rc_STOP calibrate_next:Next";
+
         main::Log3($hash->{NAME}, 3, "MMSOMFY::DeviceModel ($hash->{NAME}): Starting interactive calibration: $calibrationType");
+        main::Log3($hash->{NAME}, 5, "MMSOMFY::DeviceModel ($hash->{NAME}): Calibration UI: webCmd restricted to 'stop:calibrate_next'");
 
         # Start first calibration step
         ProcessCalibrationStep($hash);
@@ -3367,16 +3423,15 @@ package MMSOMFY::DeviceModel;
             main::Log3($hash->{NAME}, 1, "Configuration saved automatically.");
         }
 
-        # Update calibration metadata
-        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::lastCalibration} = time();
-        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::calibrationQuality} = 'good';
-
         my $completionMsg = (defined($saveError) && $saveError ne '')
             ? "Basic calibration finished. IMPORTANT: Run 'save' to persist the calibration results!"
             : "Basic calibration finished. Configuration saved automatically.";
 
-        # Cleanup
+        # Cleanup: Update already set webCmd/cmdIcon for normal mode.
+        # Delete CalibrationData and trigger refresh so Command::ToString returns
+        # the normal command list when FHEMWEB re-renders.
         delete $hash->{CalibrationData};
+        main::FW_directNotify("#FHEMWEB:WEB", "location.reload()", "");
         MMSOMFY::Reading::SetCalibrationValues(
             "completed",
             "done",
@@ -3426,16 +3481,15 @@ package MMSOMFY::DeviceModel;
             main::Log3($hash->{NAME}, 1, "Configuration saved automatically.");
         }
 
-        # Update calibration metadata
-        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::lastCalibration} = time();
-        $main::attr{$hash->{NAME}}{MMSOMFY::Attribute::calibrationQuality} = 'good';
-
         my $completionMsg = (defined($saveError) && $saveError ne '')
             ? "Extended calibration finished. IMPORTANT: Run 'save' to persist the calibration results!"
             : "Extended calibration finished. Configuration saved automatically.";
 
-        # Cleanup
+        # Cleanup: Update already set webCmd/cmdIcon for normal mode.
+        # Delete CalibrationData and trigger refresh so Command::ToString returns
+        # the normal command list when FHEMWEB re-renders.
         delete $hash->{CalibrationData};
+        main::FW_directNotify("#FHEMWEB:WEB", "location.reload()", "");
         MMSOMFY::Reading::SetCalibrationValues(
             "completed",
             "done",
@@ -4132,30 +4186,6 @@ sub MMSOMFY_Set($@) {
 
     <li><b>disable</b> (0 or 1)<br>
         Disable this device without deleting it. The device won't respond to commands.
-        <br><br>
-    </li>
-
-    <li><b>calibrationMode</b> (off/basic/extended, default: off)<br>
-        Controls automatic calibration behavior. When set to 'basic' or 'extended', 
-        the device will periodically suggest recalibration if timing accuracy degrades.
-        <br><br>
-    </li>
-
-    <li><b>calibrationQuality</b> (unknown/poor/acceptable/good/excellent)<br>
-        Indicates the estimated accuracy of the current timing calibration.
-        Updated automatically after calibration or verification.
-        <br><br>
-    </li>
-
-    <li><b>lastCalibration</b> (Unix timestamp)<br>
-        Timestamp of the last successful calibration. Used to determine when 
-        recalibration might be needed.
-        <br><br>
-    </li>
-
-    <li><b>calibrationHistory</b> (JSON)<br>
-        Stores historical calibration data for trend analysis and drift detection.
-        Advanced users can analyze calibration stability over time.
         <br><br>
     </li>
 
